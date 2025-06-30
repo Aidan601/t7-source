@@ -322,6 +322,7 @@ function main()
     //thread Chamber01();
     //thread Chamber02();
     thread Hub();
+    thread PAPDoor();
     thread EndGameButtons();
     thread LaserChamber02();
     thread FaithPlateChamber();
@@ -873,6 +874,10 @@ function DoubleDoors()
             player.score -= trigger.script_int;
             trigger Delete();
             clip Delete();
+            if (isDefined(trigger.script_string))
+            {
+                level flag::set(trigger.script_string);
+            }
             break;
         }
         else
@@ -1010,14 +1015,18 @@ function LaserEmitter(laserIndex)
     dir = GetEnt(self.target, "targetname");
     tag_laser_pos = self GetTagOrigin("tag_laser");
     spark = util::spawn_model("tag_origin", (0, 0, 0));
-    laser_1 = util::spawn_model("tag_origin", tag_laser_pos);
-    laser_2 = util::spawn_model("tag_origin", (0, 0, 0));
-    laser_1.angles = dir.angles;
-    PlayFXOnTag(level._effect["laser_beam"], laser_1, "tag_origin");
-    PlayFXOnTag(level._effect["laser_beam"], laser_2, "tag_origin");
+    lasers = [];
+    lasers[0] = util::spawn_model("tag_origin", tag_laser_pos);
+    lasers[1] = util::spawn_model("tag_origin", (99999, 99999, 99999));
+    lasers[2] = util::spawn_model("tag_origin", (99999, 99999, 99999));
+
+    lasers[0].angles = dir.angles;
+    foreach(las in lasers)
+    {
+        PlayFXOnTag(level._effect["laser_beam"], las, "tag_origin");
+    }
     PlayFXOnTag(level._effect["laser_spark"], spark, "tag_origin");
     spark Hide();
-    laser_2.origin = (99999, 99999, 99999);
     level.NextDamagePlayer = 0;
     level.NextDamageZombie = 0;
 
@@ -1028,106 +1037,105 @@ function LaserEmitter(laserIndex)
     {
         while (level.active)
         {
-            start = dir.origin + (AnglesToForward(dir.angles) * 20);
-            end = dir.origin + (AnglesToForward(dir.angles) * 9999);
-            trace = BulletTrace(start, end, true, undefined);
-            portal1_dist = Distance(trace["position"], level.portal_1.origin);
-            portal2_dist = Distance(trace["position"], level.portal_2.origin);
-            cube = undefined;
-            trace_2 = undefined;
-            
-            // CUBE REFLECTION LOGIC
-            if (
-                isDefined(trace["entity"])
-                && trace["entity"].targetname == "portal_cube"
-                && trace["entity"].model == "m_0a7141f5_reflection_cube"
-            )
+            foreach(las in lasers)
+                las.origin = (99999, 99999, 99999);
+
+            last_portal = false;
+            origin = dir.origin;
+            angles = dir.angles;
+            ignore_ent = undefined;
+            traces = [];
+
+            for(i = 0; i < 3; i++)
             {
-                cube = trace["entity"];
-                laser_2.origin = cube.origin;
-                laser_2.angles = cube.angles - (0, 90, 0);
-                laser_2 Show();
-                start_2 = laser_2.origin + (AnglesToForward(laser_2.angles) * 20);
-                end_2 = laser_2.origin + (AnglesToForward(laser_2.angles) * 9999);
-                trace_2 = BulletTrace(start_2, end_2, true, cube);
-                spark.origin = trace_2["position"];
+                dist = 20;
+                if(i > 0 && last_portal)
+                    dist = 5;
+
+                start = origin + (AnglesToForward(angles) * dist);
+                end = origin + (AnglesToForward(angles) * 9999);
+                traces[i] = BulletTrace(start, end, true, ignore_ent);
+
+                lasers[i].origin = origin;
+                lasers[i].angles = angles;
+
+                hitEnt = traces[i]["entity"];
+                if(isDefined(hitEnt) && hitEnt.targetname == "portal_cube" && hitEnt.model == "m_0a7141f5_reflection_cube" && i < 2)
+                {
+                    origin = hitEnt.origin;
+                    angles = hitEnt.angles - (0,90,0);
+                    ignore_ent = hitEnt;
+                    last_portal = false;
+                    continue;
+                }
+
+                portal1_dist = Distance(traces[i]["position"], level.portal_1.origin);
+                portal2_dist = Distance(traces[i]["position"], level.portal_2.origin);
+                if((portal1_dist <= 32 || portal2_dist <= 32) && i < 2)
+                {
+                    if(portal1_dist <= 32)
+                        other_portal = level.portal_2;
+                    else
+                        other_portal = level.portal_1;
+                    origin = other_portal.origin;
+                    angles = other_portal.angles;
+                    ignore_ent = undefined;
+                    last_portal = true;
+                    continue;
+                }
+
+                for(j = i+1; j < 3; j++)
+                    lasers[j].origin = (99999, 99999, 99999);
+                break;
             }
-            
-            // PORTAL LOGIC
-            else if (portal1_dist <= 32 || portal2_dist <= 32)
-            {
-                if (portal1_dist <= 32)
-                    other_portal = level.portal_2;
-                else
-                    other_portal = level.portal_1;
-                laser_2.origin = other_portal.origin;
-                laser_2.angles = other_portal.angles;
-                laser_2 Show();
-                start_2 = laser_2.origin + (AnglesToForward(laser_2.angles) * 5);
-                end_2 = laser_2.origin + (AnglesToForward(laser_2.angles) * 9999);
-                trace_2 = BulletTrace(start_2, end_2, true, undefined);
-                spark.origin = trace_2["position"];
-            }
-            // JUST HIT SOMETHING ELSE, NOT CUBE OR PORTAL
-            else
-            {
-                laser_2.origin = (9999, 9999, 9999);
-                trace_2 = undefined;
-                spark.origin = trace["position"];
-            }
+
+            final_trace = traces[traces.size - 1];
+            spark.origin = final_trace["position"];
             level.laserEndpoints[laserIndex] = spark.origin;
             spark Show();
-            
-            // DAMAGE LOGIC...
-            if (isDefined(trace["entity"]))
+
+            for(k = 0; k < traces.size; k++)
             {
-                ent = trace["entity"];
-                if (IsPlayer(ent))
+                tr = traces[k];
+                if(!isDefined(tr) || !isDefined(tr["entity"]))
+                    continue;
+                ent = tr["entity"];
+                if (k == 0)
+                    dmg = 33;
+                else
+                    dmg = 50;
+                if(IsPlayer(ent))
                 {
-                    if (level.NextDamagePlayer < GetTime())
+                    if(level.NextDamagePlayer < GetTime())
                     {
-                        ent DoDamage(33, trace["position"]);
-                        PlaySoundAtPosition("pl_burnpain",ent.origin);
+                        ent DoDamage(dmg, tr["position"]);
+                        if(k == 0)
+                            PlaySoundAtPosition("pl_burnpain", ent.origin);
                         level.NextDamagePlayer = GetTime() + 500;
                     }
                 }
-                if (ent zombie_utility::is_zombie())
+                if(ent zombie_utility::is_zombie())
                 {
-                    ent DoDamage(50, trace["position"]);
+                    ent DoDamage(50, tr["position"]);
                     level.NextDamageZombie = GetTime() + 200;
                     death = ent.health <= 0;
                     player show_hit_marker(death);
                 }
             }
-            
-            if (isDefined(trace_2) && isDefined(trace_2["entity"]))
-            {
-                ent2 = trace_2["entity"];
-                if (IsPlayer(ent2))
-                {
-                    if (level.NextDamagePlayer < GetTime())
-                    {
-                        ent2 DoDamage(50, trace_2["position"]);
-                        level.NextDamagePlayer = GetTime() + 500;
-                    }
-                }
-                if (ent2 zombie_utility::is_zombie())
-                {
-                    ent2 DoDamage(50, trace_2["position"]);
-                    level.NextDamageZombie = GetTime() + 200;
-                    death = ent2.health <= 0;
-                    player show_hit_marker(death);
-                }
-            }
+
             WAIT_SERVER_FRAME;
         }
     }
     spark Hide();
-    laser_2 Hide();
-    laser_1 Hide();
+    foreach(las in lasers)
+    {
+        las Hide();
+    }
     spark Delete();
-    laser_2 Delete();
-    laser_1 Delete();
+    foreach(las in lasers)
+    {
+        las Delete();
+    }
 }
 
 function LaserCatcher(true_sign, false_sign, index)
@@ -1241,7 +1249,7 @@ function PGChamber01()
     dropper = GetEnt("item_dropper_pg1", "targetname");
     orange_origin = GetEnt("orange_portal_pg1", "targetname");
     portal_gun_trigger = GetEnt("blue_portal_gun_pickup_trigger","targetname");
-    close_trigger = GetEnt("pg1_close _door", "targetname");
+    close_trigger = GetEnt("pg1_close_door", "targetname");
 
     button thread Button(door, door_true, door_false);
     trigger waittill("trigger", player);
@@ -1352,6 +1360,12 @@ function SwitchFaith01()
     }
 }
 
+function PAPDoor()
+{
+    pap_clip = GetEnt("pap_clip", "targetname");
+    pap_boards = GetEntArray("pap_boards", "targetname");
+
+}
 
 function FaithPlateInit()
 {
@@ -1513,6 +1527,10 @@ function Button(door,true_sign,false_sign)
         up_anim = "fxanim_portal_button_up";
         down_anim = "fxanim_portal_button_down";
     }
+    if (door.model == "sliding_door_double_noglass")
+        door thread scene::play("fxanim_sliding_door_double_close", door);
+    else
+        door thread scene::play("fxanim_portal_door_close", door);
     self thread scene::play(up_anim, self);
     if (isDefined(indicators))
     {
