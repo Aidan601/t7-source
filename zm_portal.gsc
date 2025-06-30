@@ -1,3 +1,5 @@
+#using scripts\zm\_zm_equipment; 
+#using scripts\zm\_zm_hero_weapon; 
 #using scripts\shared\lui_shared; 
 #using scripts\zm\_zm_perks; 
 #using scripts\codescripts\struct;
@@ -58,6 +60,9 @@
 #using scripts\zm\zm_usermap;
 
 #using scripts\zm\zm_giant_cleanup_mgr;
+
+// SPECIALISTS
+//#using scripts\zm\_hb21_zm_hero_weapon;
 
 // Sphynx's Console Commands
 #using scripts\Sphynx\commands\_zm_commands;
@@ -362,6 +367,8 @@ function usermap_test_zone_init()
     zm_zonemgr::add_adjacent_zone( "pump_elevator_zone", "fall_zone", "pump_elevator_fall");
     zm_zonemgr::add_adjacent_zone( "fall_zone", "40s_zone", "fall_40s");
     zm_zonemgr::add_adjacent_zone( "40s_zone", "pap_zone", "40s_pap");
+    zm_zonemgr::add_adjacent_zone( "fall_zone", "boss_zone", "fall_boss");
+
 
     level flag::init( "always_on" );
 	level flag::set( "always_on" );
@@ -662,6 +669,20 @@ function BrodesCore()
     }
 }
 
+function EquipPortalGun()
+{
+	self endon("death");
+	self endon("disconnect");
+	while(self.sessionstate == "playing")
+	{
+		if(self ActionSlotOneButtonPressed() && self GetCurrentWeapon() != GetWeapon("portal_gun"))
+		{
+			self zm_weapons::weapon_give(GetWeapon("portal_gun"),false,false,true,true);
+        }
+        WAIT_SERVER_FRAME;
+    }
+}
+
 function Hub()
 {
     enter_trigger = GetEnt("enter_hub_trig", "targetname");
@@ -781,6 +802,7 @@ function WaterSwitch()
     self SetCursorHint("HINT_NOICON");
     self SetHintString("");
     level flag::wait_till("power_on");
+    level flag::set("fall_40s");
     self waittill("trigger", player);
     level.water_switch_count++;
     model EnableLinkTo();
@@ -1104,6 +1126,30 @@ function LaserEmitter(laserIndex)
                     dmg = 33;
                 else
                     dmg = 50;
+                if(isDefined(level.pap_clip) && ent == level.pap_clip)
+                {
+                    level.pap_clip.origin = (0,0,0);
+                    level.pap_clip NotSolid();
+                    level.pap_clip Hide();
+                    level.pap_clip Delete();
+                    if(isDefined(level.pap_boards))
+                    {
+                        foreach(board in level.pap_boards)
+                        {
+                            if(isDefined(board))
+                            {
+                                board = (0,0,0);
+                                board NotSolid();
+                                board Hide();
+                                board Delete();
+                            }
+                        }
+                    }
+                    level.pap_clip = undefined;
+                    level.pap_boards = undefined;
+                    level flag::set("40s_pap");
+                    continue;
+                }
                 if(IsPlayer(ent))
                 {
                     if(level.NextDamagePlayer < GetTime())
@@ -1258,8 +1304,9 @@ function PGChamber01()
     portal_gun_trigger SetCursorHint("HINT_NOICON");
     portal_gun_trigger SetHintString("Hold ^3[{+activate}]^7 to pick up Handheld Portal Device");
     portal_gun_trigger waittill("trigger", player);
-    player GiveWeapon(GetWeapon("portal_gun"));
-    player SwitchToWeapon(GetWeapon("portal_gun"));
+    portal_gun_trigger Delete();
+    player thread EquipPortalGun();
+    player thread zm_equipment::show_hint_text( "Press ^3[{+actionslot 1}]^7 to wield the Portal Gun.");
     thread PlacePortalManually(orange_origin,2,true);
     close_trigger waittill("trigger", player);
     door thread DoorOpen(false);
@@ -1362,8 +1409,8 @@ function SwitchFaith01()
 
 function PAPDoor()
 {
-    pap_clip = GetEnt("pap_clip", "targetname");
-    pap_boards = GetEntArray("pap_boards", "targetname");
+    level.pap_clip = GetEnt("pap_clip", "targetname");
+    level.pap_boards = GetEntArray("pap_boards", "targetname");
 
 }
 
@@ -1728,8 +1775,12 @@ function UndergroundElevator()
             //BOSS ROOM
             if (elevator.script_int == 1)
             {
-                player SetOrigin((2618 , 5917 , 1232 ));
+                level flag::set("fall_boss");
+                player SetOrigin((-7241.75 , 5876.25 , 1232 ));
                 player SetPlayerAngles((0, 90, 0));
+                thread Boss();
+                boss_switch = GetEnt("boss_switch_trigger", "targetname");
+                boss_switch thread SwitchBoss();
             }
         }
     }
@@ -1899,6 +1950,475 @@ function Fan()
 		self RotateYaw(360,3);
 		wait(3);
 	}
+}
+
+//BOSS LOGIC
+
+function Boss()
+{
+	boss = GetEnt("brodes_boss","targetname");
+	boss_triggers = GetEntArray("boss_damage_trigger","targetname");
+    boss_clip = GetEntArray("boss_clip", "targetname");
+	arms = GetEnt("brodes_arms", "targetname");
+    boss thread scene::play("fxanim_brodes_boss_idle", boss);
+    origin = util::spawn_model("tag_origin",boss.origin, boss.angles);
+    arms_origin = util::spawn_model("tag_origin",arms.origin, arms.angles);
+	arms EnableLinkTo();
+    boss EnableLinkTo();
+    arms_origin EnableLinkTo();
+    boss LinkTo(origin);
+	arms LinkTo(arms_origin);
+    arms_origin LinkTo(boss);
+	level.BossWave = 3;
+	level.BossStunned = false;
+    level.CoreHit = false;
+    level.CoreFall = false;
+    level.BombTeleport = false;
+	boss.health = 60000;
+
+    level.core_1 = GetEnt("saint_core","targetname");
+	level.core_2 = GetEnt("mjpw_core","targetname");
+	level.core_3 = GetEnt("noah_core","targetname");
+	level.core_1 thread WatchCoreHealth(boss);
+	level.core_2 thread WatchCoreHealth(boss);
+	level.core_3 thread WatchCoreHealth(boss);
+
+	foreach(trigger in boss_triggers)
+	{
+        trigger EnableLinkTo();
+        trigger LinkTo(origin);
+        trigger thread BossDamage(boss);
+	}
+    foreach(clip in boss_clip)
+    {
+        clip EnableLinkTo();
+        clip LinkTo(origin);
+    }
+	arms thread BossAnims(boss);
+    
+	wasStunned = false;
+    while (level.BossWave != 0)
+    {
+        if (!level.BossStunned)
+        {
+            // If just unstunned, snap angle
+            if (wasStunned)
+            {
+                foreach (player in GetPlayers())
+                {
+                    eye = player GetTagOrigin("tag_eye");
+                    dir = VectorNormalize(eye - origin.origin);
+                    angles = VectorToAngles(dir);
+                    origin.angles = (origin.angles[0], angles[1], origin.angles[2]);
+                    boss.angles = origin.angles;
+                }
+                wasStunned = false;
+            }
+            else
+            {
+                foreach (player in GetPlayers())
+                {
+                    eye = player GetTagOrigin("tag_eye");
+                    dir = VectorNormalize(eye - origin.origin);
+                    angles = VectorToAngles(dir);
+                    origin.angles = (origin.angles[0], angles[1], origin.angles[2]);
+                }
+            }
+            WAIT_SERVER_FRAME;
+        }
+        else
+        {
+            wasStunned = true;
+            wait(.1);
+        }
+    }
+    arms_origin thread ArmSpin();
+    while (level.BossWave != -1)
+    {
+        // If just unstunned, snap angle
+        if (wasStunned)
+        {
+            foreach (player in GetPlayers())
+            {
+                eye = player GetTagOrigin("tag_eye");
+                dir = VectorNormalize(eye - origin.origin);
+                angles = VectorToAngles(dir);
+                origin.angles = (origin.angles[0], angles[1], origin.angles[2]);
+            }
+            wasStunned = false;
+        }
+        else
+        {
+            foreach (player in GetPlayers())
+            {
+                eye = player GetTagOrigin("tag_eye");
+                dir = VectorNormalize(eye - origin.origin);
+                angles = VectorToAngles(dir);
+                origin.angles = (origin.angles[0], angles[1], origin.angles[2]);
+            }
+        }
+        WAIT_SERVER_FRAME;
+    }
+}
+
+function ArmSpin()
+{
+    self Unlink();
+    while (level.BossWave != -1)
+    {
+        self RotateYaw(self.angles[2] + 360,2);
+        wait 2;
+    }
+}
+
+function BossDamage(boss)
+{
+	temp = boss.health;
+	while (level.BossWave != 0)
+	{
+		self waittill("damage", damage, attacker, dir, point, mod, model, tag, part, weapon, flags, inflictor, chargeLevel);
+		boss.health = temp;
+        foreach (player in GetPlayers())
+		{
+			if (!(level.BossStunned) && (weapon == GetWeapon("portal_grenade_zm") || weapon == GetWeapon("portal_grenade")) && level.BombTeleport)
+            {
+                level.BossStunned = true;
+                player show_hit_marker(false);
+                //IPrintLnBold(model);
+            }	
+		}
+        WAIT_SERVER_FRAME;
+	}
+    while (level.BossWave != -1)
+    {
+        self waittill("damage", damage, attacker, dir, point, mod, model, tag, part, weapon, flags, inflictor, chargeLevel);
+        boss.health = boss.health - damage;
+        foreach (player in GetPlayers())
+		{
+            death = boss.health <= 0;
+            player show_hit_marker(death);
+            if (death)
+                level.BossWave = -1;
+        }
+    }
+}
+
+function BossAnims(boss)
+{
+	wait(2);
+    //thread ee_ending();
+    level thread zm_audio::sndMusicSystem_PlayState("portal_boss");
+	self thread scene::play("fxanim_brodes_arms_intro", self);
+	wait(5.7);
+	self thread scene::play("fxanim_brodes_arms_pounce", self);
+	boss thread scene::play("fxanim_brodes_boss_idle_to_panel_down", boss);
+	wait(2.733);
+	
+	foreach (player in GetPlayers())
+    {
+        //FIRST PHASE
+        while (level.BossWave != 0)
+		{
+            while(!(level.BossStunned))
+			{
+                if (level.CoreFall)
+                {
+                    while (level.CoreFall)
+                    {
+                        wait(.2);
+                        //IPrintLnBold("LOOP");
+                    }
+                    if (level.BossWave <= 0)
+                        break;
+                    //level.BossStunned = true;
+                    boss thread scene::play("fxanim_brodes_boss_hit_from_above_stunned", boss);
+                    self thread scene::play("fxanim_brodes_arms_groundtobomb", self);
+                    wait(1.8);
+                    self thread scene::play("fxanim_brodes_arms_lift", self);
+                    wait(1.9);
+                    boss thread scene::play("fxanim_brodes_boss_from_stunned_1", boss);
+                    self thread scene::play("fxanim_brodes_arms_lower", self);
+                    wait(2.33);
+                    //level.BossStunned = false;
+                    boss thread scene::play("fxanim_brodes_boss_idle_to_panel_down", boss);
+                    self thread scene::play("fxanim_brodes_arms_bombtoground", self);
+                    wait(1.8);
+                }
+                //START BOMBING
+				i = 0;
+				while(i < 5)
+				{
+					boss thread ShootGrenade();
+					boss thread scene::play("fxanim_brodes_boss_low_defense_fire", boss);
+					if (CheckDamageDuringWait(1))
+						break;
+					i++;
+				}
+				if (CheckDamageDuringWait(4))
+					break;
+				self thread scene::play("fxanim_brodes_arms_groundtobomb", self);
+				if (CheckDamageDuringWait(1.36))
+					break;
+				self thread scene::play("fxanim_brodes_arms_bombtoground", self);
+                if (CheckDamageDuringWait(1.36))
+					break;
+                //IPrintLnBold("IDK2");
+			}
+            if (level.BossWave <= 0)
+                break;
+			boss thread scene::play("fxanim_brodes_boss_hit_from_above_stunned", boss);
+			self thread scene::play("fxanim_brodes_arms_groundtobomb", self);
+			wait(1.8);
+			self thread scene::play("fxanim_brodes_arms_lift", self);
+            level.CoreHit = true;
+			if (CheckCoreFallDuringWait(12.133))
+            {
+
+            }
+            //IPrintLnBold("IDK");
+            level.CoreHit = false;
+			level.BossStunned = false;
+			boss thread scene::play("fxanim_brodes_boss_from_stunned_1", boss);
+			self thread scene::play("fxanim_brodes_arms_lower", self);
+			wait(1.33);
+		}
+        self thread scene::play("fxanim_brodes_arms_lift", self);
+        boss thread scene::play("fxanim_brodes_boss_idle_core_3", boss);
+        //IPrintLnBold("RAISE");
+        wait(1.9);
+
+        //FINAL PHASE
+        while(level.BossWave != -1)
+        {
+            //IPrintLnBold("START BOMBING");
+            //START BOMBING
+			i = 0;
+			while(i < 8)
+			{
+				boss thread ShootGrenade(); //TODO: CREATE CLUSTER GRENADES MAYBE
+				//boss thread scene::play("fxanim_brodes_boss_low_defense_fire", boss);
+				if (CheckDeathDuringWait(0.6))
+					break;
+				i++;
+			}
+			if (CheckDeathDuringWait(1))
+				break;
+			self thread scene::play("fxanim_brodes_arms_shrink", self);
+			if (CheckDeathDuringWait(.5))
+				break;
+			self thread scene::play("fxanim_brodes_arms_expand", self);
+            if (CheckDeathDuringWait(.5))
+				break;
+            WAIT_SERVER_FRAME;
+        }
+        boss thread scene::play("fxanim_brodes_boss_hit_from_above_stunned", boss);
+        level thread zm_audio::sndMusicSystem_StopAndFlush();
+        music::setmusicstate("none");
+    }
+    //TODO: END GAME SCRIPTS GO HERE
+}
+
+function WatchCoreHealth(boss)
+{
+	trigger = GetEnt(self.target, "targetname");
+    origin = GetEnt(trigger.target, "targetname");
+    incinerator_trigger = GetEnt("incinerator_trigger","targetname");
+
+    origin.origin = self.origin;
+    origin.angles = self.angles;
+    //self NotSolid();
+    self EnableLinkTo();
+    self.health = 15000;
+    self LinkTo(origin);
+	trigger EnableLinkTo();
+	trigger LinkTo(origin);
+	temp = self.health;
+
+    if (self.script_int == 1)
+    {
+        origin LinkTo(boss,"core_2");
+        self thread scene::play("fxanim_core_1_pincher_idle", self);
+    }
+    else if (self.script_int == 2)
+    {
+        origin LinkTo(boss,"core_1");
+        self thread scene::play("fxanim_core_2_pincher_idle", self);
+    }
+    else if (self.script_int == 3)
+    {
+        origin LinkTo(boss,"core_3");
+        self thread scene::play("fxanim_core_3_pincher_idle", self);
+    }
+
+	while (self.health > 0)
+	{
+		trigger waittill("damage", damage, attacker, dir, point, mod, model, tag, part, weapon, flags, inflictor, chargeLevel);
+		if (level.BossStunned && level.CoreHit)
+		{
+			foreach (player in GetPlayers())
+			{
+				if (attacker == player)
+                {
+                    //IPrintLnBold(damage);
+                    self.health = self.health - damage;
+                    death = self.health <= 0;
+                    player show_hit_marker(death);
+                    if (death)
+                        level.CoreFall = true;
+                }
+			}
+		}
+        WAIT_SERVER_FRAME;
+	}
+    //trigger Unlink();
+    //trigger Delete();
+    origin Unlink();
+    //self Solid();
+    //self LinkTo(origin);
+    origin PhysicsLaunch(origin.origin, (0, 0, 0));
+    if (self.script_int == 1)
+    {
+        self thread scene::play("fxanim_core_1_idle", self);
+        origin PlayLoopSound("noah_core_vox",1);
+    }
+    else if (self.script_int == 2)
+    {
+        self thread scene::play("fxanim_core_2_idle", self);
+        origin PlayLoopSound("saint_core_vox",1);
+    }
+    else
+    {
+        self thread scene::play("fxanim_core_3_idle", self);
+        origin PlayLoopSound("mjpw_core_vox",1);
+    }
+
+    temp = level.BossWave;
+    while(level.BossWave == temp)
+    {
+        if (self IsTouching(incinerator_trigger) && level.CoreFall)
+        {
+            origin StopLoopSound(1);
+            wait(.1);
+            origin Delete();
+            level.BossWave--;
+            level.CoreFall = false;
+            self Delete();
+            IPrintLnBold("ININCERATE");
+        }
+        WAIT_SERVER_FRAME;
+    }
+
+}
+
+
+function CheckDamageDuringWait(val)
+{
+    i = 0;
+    while(i < 5*val)
+    {
+        if (level.BossStunned)
+            return true;
+        else
+        {
+            wait(.2);
+        }
+        i++;
+        WAIT_SERVER_FRAME;
+    }
+    return false;
+}
+
+function CheckCoreFallDuringWait(val)
+{
+    i = 0;
+    while(i < 5*val)
+    {
+        if (level.CoreFall)
+        {
+            return true;
+        }
+        else
+        {
+            wait(.2);
+        }
+        i++;
+        WAIT_SERVER_FRAME;
+    }
+    return false;
+}
+
+function CheckDeathDuringWait(val)
+{
+    i = 0;
+    while(i < 5*val)
+    {
+        if (level.BossWave == -1)
+        {
+            return true;
+        }
+        else
+        {
+            wait(.2);
+        }
+        i++;
+        WAIT_SERVER_FRAME;
+    }
+    return false;
+}
+
+function ShootGrenade()
+{
+	foreach (player in GetPlayers())
+	{
+		base_target_pos = player.origin;
+		v_velocity = player GetVelocity();
+		// Predict player's future position (tweak 1.0-1.5 for desired prediction)
+		predicted_target_pos = base_target_pos + (v_velocity);
+
+		dir = VectorToAngles(predicted_target_pos - self.origin);
+		dir = AnglesToForward(dir);
+
+		launch_offset = (dir * 5);
+
+		launch_pos = self GetTagOrigin("grenade") + launch_offset;
+
+		dist = Distance(launch_pos, predicted_target_pos);
+
+		// Launch directly at predicted position, with a vertical boost for arc
+		velocity = dir * (dist)*1.5;
+		velocity = velocity + (0, 0, 120);
+
+		level.LastBombVelocity = velocity;
+
+		thread BombLogic(self MagicGrenadeType(GetWeapon("portal_grenade"), launch_pos, velocity));
+		//PlaySoundAtPosition("wpn_grenade_fire_mechz", self.origin);
+	}
+}
+
+function BombLogic(bomb)
+{	
+    return bomb;
+}
+
+function SwitchBoss()
+{
+    model = GetEnt("boss_switch", "targetname");
+    incinerator = GetEnt(model.target, "targetname");
+    clip = GetEnt(incinerator.target, "targetname");
+    self SetCursorHint("HINT_NOICON");
+	self SetHintString("");
+    model thread scene::play("fxanim_portal_switch_up", model);
+    while(true)
+    {
+        self waittill("trigger", player);
+        model thread scene::play("fxanim_portal_switch_down", model);
+        incinerator thread scene::play("fxanim_incinerator_open", incinerator);
+        clip Hide();
+        wait(7);
+        clip show();
+        model thread scene::play("fxanim_portal_switch_up", model);
+        incinerator thread scene::play("fxanim_incinerator_close", incinerator);
+    }
 }
 
 //PORTALS AND PORTAL GUN LOGIC
@@ -2418,32 +2938,34 @@ function PlacePortalManually(struct,portal_type,screenshake)
 
 function PlacePortal(player, portal_type, trace)
 {
-    IPrintLnBold("PLACE");
+    //IPrintLnBold("PLACE");
     // Safety: Check for valid trace and surface
     if (!IsDefined(trace))
     {
-        IPrintLnBold("PlacePortal: trace is not defined");
+        //IPrintLnBold("PlacePortal: trace is not defined");
         return;
     }
     if (!IsDefined(trace["position"]))
     {
-        IPrintLnBold("PlacePortal: trace[position] is not defined");
+        //IPrintLnBold("PlacePortal: trace[position] is not defined");
         return;
     }
     if (trace["fraction"] >= 1.0)
     {
-        IPrintLnBold("PlacePortal: trace[fraction] is " + trace["fraction"]);
+        //IPrintLnBold("PlacePortal: trace[fraction] is " + trace["fraction"]);
+        PlaySoundAtPosition("portal_invalid_surface", trace["position"]);
         return;
     }
     if (!IsDefined(trace["entity"]))
     {
-        IPrintLnBold("PlacePortal: trace[entity] is not defined");
+        //IPrintLnBold("PlacePortal: trace[entity] is not defined");
+        PlaySoundAtPosition("portal_invalid_surface", trace["position"]);
         return;
     }
     if (trace["entity"].classname != "script_brushmodel" && trace["entity"].targetname != "wall")
     {
         PlaySoundAtPosition("portal_invalid_surface", trace["position"]);
-        IPrintLnBold("Entity: " + (isDefined(trace["entity"]) ? trace["entity"].targetname : "undefined"));
+       //IPrintLnBold("Entity: " + (isDefined(trace["entity"]) ? trace["entity"].targetname : "undefined"));
         return;
     }
 
