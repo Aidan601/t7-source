@@ -1779,6 +1779,7 @@ function UndergroundElevator()
                 player SetOrigin((-7241.75 , 5876.25 , 1232 ));
                 player SetPlayerAngles((0, 90, 0));
                 thread Boss();
+                thread BossSpawn();
                 boss_switch = GetEnt("boss_switch_trigger", "targetname");
                 boss_switch thread SwitchBoss();
             }
@@ -1953,6 +1954,11 @@ function Fan()
 }
 
 //BOSS LOGIC
+
+function BossSpawn()
+{
+    
+}
 
 function Boss()
 {
