@@ -282,7 +282,7 @@ function main()
 
     level.dog_rounds_allowed = false;
     zm_perks::spare_change();
-    level.zombie_move_speed = 70;
+    level.round_spawn_func = &portal_round_spawn;
     callback::on_spawned( &watch_max_ammo );
 
     thread setupMusic();
@@ -405,16 +405,11 @@ function Camera()
         {
             if (!IsAlive(player))
                 continue;
-
-            eye = player GetTagOrigin("tag_eye");
-            // Get direction from core to player
-            dir = VectorNormalize(eye - self.origin);
-
-            // Convert direction vector to angles
-            angles = VectorToAngles(dir);
-
-            // Set model's angles so its forward faces the player
-            self.angles = angles;
+                
+            eye = player GetTagOrigin("j_head");
+            dir = VectorToAngles(self.origin - eye);
+            self RotateTo(dir,0.1);
+            wait(0.1);
         }
         WAIT_SERVER_FRAME;
     }
@@ -865,6 +860,9 @@ function UndergroundDoors()
             player PlayLocalSound("zmb_cha_ching");
             player.score -= trigger.script_int;
             trigger Delete();
+            clip.origin = (0,0,0);
+            clip NotSolid();
+            clip Hide();
             clip Delete();
             if (isDefined(trigger.script_string))
             {
@@ -1163,6 +1161,7 @@ function LaserEmitter(laserIndex)
                 if(ent zombie_utility::is_zombie())
                 {
                     ent DoDamage(50, tr["position"]);
+                    PlaySoundAtPosition("pl_burnpain", ent.origin);
                     level.NextDamageZombie = GetTime() + 200;
                     death = ent.health <= 0;
                     player show_hit_marker(death);
@@ -1425,7 +1424,7 @@ function FaithPlate()
 {
     model = GetEnt(self.target, "targetname");
     target = GetEnt(model.target, "targetname");
-    model thread scene::play("fxanim_faith_plate_idle", model);
+    model thread scene::init("fxanim_faith_plate_launch_up", model);
     if (isDefined(self.script_int) && self.script_int == 1)
     {
         while (1)
@@ -1437,7 +1436,10 @@ function FaithPlate()
                 {
                     if (cube IsTouching(self))
                     {
-                        model thread scene::play("fxanim_faith_plate_launch_up", model);
+                        if (model.model == "faith_plate")
+                            model thread scene::play("fxanim_faith_plate_launch_up", model);
+                        else
+                            model thread scene::play("fxanim_faith_plate_128_launch", model);
                         old_origin = cube.origin;
                         old_angles = cube.angles;
                         cube Delete();
@@ -1475,7 +1477,10 @@ function FaithPlate()
         while(1)
         {
             self waittill("trigger", player);
-            model thread scene::play("fxanim_faith_plate_launch_angle", model);
+            if (model.model == "faith_plate")
+                model thread scene::play("fxanim_faith_plate_launch_angle", model);
+            else
+                model thread scene::play("fxanim_faith_plate_128_launch", model);
             player SetOrigin(player.origin + (0,0,5));
             player SetVelocity(LaunchToTarget(self.origin,target.origin,2.4));
             wait(3.33);
@@ -1719,8 +1724,13 @@ function Elevator()
         zm_zonemgr::disable_zone("start2_zone");
         zm_zonemgr::disable_zone("start3_zone");
         SetDvar("ai_disableSpawn", 1);
-        level thread zm_powerups::specific_powerup_drop("nuke", self.origin);
-        self.score -= 400;
+        foreach (zombie in getaispeciesarray(level.zombie_team, "all"))
+        {
+            if (isDefined(zombie) && zombie zombie_utility::is_zombie())
+            {
+                zombie Kill();
+            }
+        }
     }
     wait(5);
     origin StopLoopSound(1);
@@ -1775,9 +1785,10 @@ function UndergroundElevator()
             //BOSS ROOM
             if (elevator.script_int == 1)
             {
+                boss_spawn = GetEnt("boss_spawn", "targetname");
                 level flag::set("fall_boss");
-                player SetOrigin((-7241.75 , 5876.25 , 1232 ));
-                player SetPlayerAngles((0, 90, 0));
+                player SetOrigin(boss_spawn.origin);
+                player SetPlayerAngles(boss_spawn.angles);
                 thread Boss();
                 thread BossSpawn();
                 boss_switch = GetEnt("boss_switch_trigger", "targetname");
@@ -1957,7 +1968,31 @@ function Fan()
 
 function BossSpawn()
 {
-    
+    spawners = GetEntArray("boss_zombie_spawner", "targetname");
+    if(!spawners.size)
+    {
+        spawners = level.zombie_spawners;
+    }
+    zombies = [];
+    max_count = 10;
+    while(level.BossWave != -1)
+    {
+        zombies = array::remove_dead(zombies, 0);
+        zombies = array::remove_undefined(zombies, 0);
+        while(zombies.size < max_count)
+        {
+            s_spawn_point = array::random(spawners);
+            ai = zombie_utility::spawn_zombie(spawners[0], "arena_zombie", s_spawn_point, level.round_number);
+            if(isdefined(ai))
+            {
+                array::add(zombies, ai, 0);
+            }
+            zombies = array::remove_dead(zombies, 0);
+            zombies = array::remove_undefined(zombies, 0);
+            WAIT_SERVER_FRAME;
+        }
+        wait(0.5);
+    }
 }
 
 function Boss()
@@ -1967,14 +2002,14 @@ function Boss()
     boss_clip = GetEntArray("boss_clip", "targetname");
 	arms = GetEnt("brodes_arms", "targetname");
     boss thread scene::play("fxanim_brodes_boss_idle", boss);
-    origin = util::spawn_model("tag_origin",boss.origin, boss.angles);
+    origin = util::spawn_model("brodes_core",boss.origin, boss.angles);
     arms_origin = util::spawn_model("tag_origin",arms.origin, arms.angles);
 	arms EnableLinkTo();
     boss EnableLinkTo();
     arms_origin EnableLinkTo();
     boss LinkTo(origin);
 	arms LinkTo(arms_origin);
-    arms_origin LinkTo(boss);
+    arms_origin LinkTo(origin);
 	level.BossWave = 3;
 	level.BossStunned = false;
     level.CoreHit = false;
@@ -2012,11 +2047,10 @@ function Boss()
             {
                 foreach (player in GetPlayers())
                 {
-                    eye = player GetTagOrigin("tag_eye");
-                    dir = VectorNormalize(eye - origin.origin);
-                    angles = VectorToAngles(dir);
-                    origin.angles = (origin.angles[0], angles[1], origin.angles[2]);
-                    boss.angles = origin.angles;
+                    eye = player GetTagOrigin("j_head");
+                    dir = VectorToAngles(origin.origin - eye);
+                    origin RotateTo(dir,0.1);
+                    wait(0.1);
                 }
                 wasStunned = false;
             }
@@ -2024,10 +2058,10 @@ function Boss()
             {
                 foreach (player in GetPlayers())
                 {
-                    eye = player GetTagOrigin("tag_eye");
-                    dir = VectorNormalize(eye - origin.origin);
-                    angles = VectorToAngles(dir);
-                    origin.angles = (origin.angles[0], angles[1], origin.angles[2]);
+                    eye = player GetTagOrigin("j_head");
+                    dir = VectorToAngles(origin.origin - eye);
+                    origin RotateTo(dir,0.1);
+                    wait(0.1);
                 }
             }
             WAIT_SERVER_FRAME;
@@ -2766,8 +2800,10 @@ function GravityHoldLoop(angle_offset, holdingDistance)
     cube_to_player_angles = VectorToAngles(direction_to_player);
     if (cube.targetname == "mjpw_core_origin" || cube.targetname == "noah_core_origin" || cube.targetname == "saint_core_origin")
         cube.angles = cube_to_player_angles;
-    else if (cube.model == "m_0a7141f5_reflection_cube" || cube.model == "m_0a7141f5_radio_reference")
+    else if (cube.model == "m_0a7141f5_reflection_cube")
         cube.angles = (0, cube_to_player_angles[1] - 90, 0); // rotate -90 degrees yaw
+    else if (cube.model == "m_0a7141f5_radio_reference")
+        cube.angle = (0, cube_to_player_angles[1] + 90, 0); // rotate 90 degrees yaw
     else
         cube.angles = (0, cube_to_player_angles[1], 0); // only yaw, no pitch
 
@@ -3149,9 +3185,15 @@ function PortalGunFireTrace()
                 portal_type = 0;
 
                 if (player AttackButtonPressed())
+                {
                     portal_type = 1;
+                    PlaySoundAtPosition("wpn_portal_gun_fire_blue", player.origin);
+                }
                 else if (player AdsButtonPressed())
+                {
                     portal_type = 2;
+                    PlaySoundAtPosition("wpn_portal_gun_fire_red", player.origin);
+                }
 
                 if (portal_type > 0)
                 {
@@ -3268,4 +3310,11 @@ function watch_max_ammo(){
 			}
 		}
 	}
+}
+
+// Force all zombies to run each round
+function portal_round_spawn()
+{
+        level.zombie_force_run = 9999;
+        zm::round_spawning();
 }
