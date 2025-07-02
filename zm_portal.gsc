@@ -279,6 +279,9 @@ function main()
 	inspectable::add_inspectable_weapon( GetWeapon("t9_zrg20mm_up"), 6.67 );
 
     zm_usermap::main();
+    
+    level.enemy_location_override_func = &enemy_location_override;
+	level.no_target_override = &no_target_override;
 
     zm_perks::spare_change();
     level.round_spawn_func = &portal_round_spawn;
@@ -328,7 +331,6 @@ function main()
     //thread Chamber01();
     //thread Chamber02();
     thread Hub();
-    thread PAPDoor();
     thread EndGameButtons();
     //thread LaserChamber02();
     thread FaithPlateChamber();
@@ -346,8 +348,9 @@ function setupMusic()
 
     zm_audio::musicState_Create("portal_boss", PLAYTYPE_SPECIAL, "portal_boss");
     zm_audio::musicState_Create("tech_diff", PLAYTYPE_SPECIAL, "tech_diff");
-    zm_audio::musicState_Create("main_01", PLAYTYPE_QUEUE, "main_01");
-    zm_audio::musicState_Create("main_02", PLAYTYPE_QUEUE, "main_02");
+    zm_audio::musicState_Create("main_01", PLAYTYPE_SPECIAL, "main_01");
+    zm_audio::musicState_Create("main_02", PLAYTYPE_SPECIAL, "main_02");
+    zm_audio::musicState_Create("hub", PLAYTYPE_SPECIAL, "hub");
 }
 
 
@@ -460,11 +463,13 @@ function BurnItems()
                     if (isDefined(level.portal_1_mesh))
                     {
                         level.portal_1_mesh Delete();
+                        level.portal_1.origin = (0,0,0);
                         PlaySoundAtPosition("portal_fizzle_01", level.portal_1.origin);
                     }
                     if (isDefined(level.portal_2_mesh))
                     {
                         level.portal_2_mesh Delete();
+                        level.portal_2.origin = (0,0,0);
                         PlaySoundAtPosition("portal_fizzle_02", level.portal_2.origin);
                     }
                     if (doAnim)
@@ -616,12 +621,17 @@ function Chamber02()
     {
         arm thread scene::play("fxanim_intro3_arm", arm);
     }
+    PlaySoundAtPosition("floor_collapse", player.origin);
 
     trigger_pickup = GetEnt("trigger_pickup", "targetname");
     pistol = GetEnt(trigger_pickup.target, "targetname");
+    trigger_pickup_clip = GetEnt("trigger_pickup_clip", "targetname");
     trigger_pickup SetCursorHint("HINT_NOICON");
     trigger_pickup SetHintString("Hold ^3[{+activate}]^7 to pick up weapon");
     trigger_pickup waittill("trigger", player);
+    trigger_pickup_clip.origin = (0,0,0);
+    trigger_pickup_clip Hide();
+    trigger_pickup_clip Delete();
     pistol Delete();
     trigger_pickup Delete();
     player GiveWeapon(GetWeapon("t9_1911"));
@@ -655,7 +665,8 @@ function BrodesCore()
     core LinkTo(origin);
     core thread scene::play("fxanim_brodes_idle", core);
     origin MoveX(157,1.5);
-    while (true)
+    core thread BrodesPickup();
+    while (isDefined(core))
     {
         foreach (player in GetPlayers())
         {
@@ -669,6 +680,24 @@ function BrodesCore()
         }
         WAIT_SERVER_FRAME;
     }
+}
+
+function BrodesPickup()
+{
+    trigger = GetEnt(self.target, "targetname");
+    clip = GetEnt(trigger.clip, "targetname");
+    trigger Hide();
+    wait(2); //DIALOG WAIT TODO
+
+    trigger Show();
+    trigger SetCursorHint("HINT_NOICON");
+    trigger SetHintString("Hold ^3[{+activate}]^7 to pick up Brodes' Core");
+    trigger waittill("trigger", player);
+    trigger Delete();
+    clip.origin = (0,0,0);
+    clip Hide();
+    clip Delete();
+    self Delete();
 }
 
 function EquipPortalGun()
@@ -700,7 +729,7 @@ function Hub()
     SetDvar("ai_disableSpawn", 0);
     player util::show_hud(true);
     player GiveWeapon(GetWeapon("t9_1911"));
-    level thread zm_audio::sndMusicSystem_PlayState("main_01");
+    level thread zm_audio::sndMusicSystem_PlayState("hub");
     foreach (underground_door in underground_doors)
     {
         underground_door thread UndergroundDoors();
@@ -712,6 +741,7 @@ function Hub()
     thread Borealis();
     thread LaserTrap();
     thread EasterEggDoor();
+    thread LemonTrigger();
 
     switch_01_trig = GetEnt("water_trigger_1", "targetname");
     switch_02_trig  = GetEnt("water_trigger_2", "targetname");
@@ -730,11 +760,13 @@ function Hub()
         }
         WAIT_SERVER_FRAME;
     }
-    water MoveZ(-258,20);
+    water MoveZ(-258,10);
+    PlaySoundAtPosition("amb_water_drain",(317,666,-5634));
+
     timer = 0;
     level flag::set("pump_fall");
     level flag::set("fall_pump_bottom");
-    while (timer < 20)
+    while (timer < 10)
     {
         foreach (player in GetPlayers())
         {
@@ -746,6 +778,18 @@ function Hub()
         wait(.5);
         timer += 0.5;
     }
+}
+
+function LemonTrigger()
+{
+    trigger = GetEnt("lemon_trigger", "targetname");
+    model = GetEnt("lemon", "targetname");
+    trigger SetCursorHint("HINT_NOICON");
+    trigger SetHintString("Hold ^3[{+activate}]^7 to pick up part");
+    trigger waittill("trigger", player);
+    model Hide();
+    trigger Hide();
+    player PlaySound( "zmb_craftable_pickup" );
 }
 
 function EndGameButtons()
@@ -814,6 +858,8 @@ function WaterSwitch()
     model LinkTo(origin);
     origin RotateRoll(-65,1);
     PlaySoundAtPosition("paint_switch",model.origin);
+    wait(1);
+    PlaySoundAtPosition("gel_pump_start", (212.75 , 650.5 , -5584 ));
 }
 
 function Borealis()
@@ -834,7 +880,7 @@ function Borealis()
     wait(1);
     button thread scene::play("fxanim_underground_switch_up", button);
     borealis Delete();
-    
+    player zm_perks::give_random_perk();
 }
 
 function IntercomJohnson()
@@ -927,9 +973,9 @@ function LaserTrap()
     model thread scene::play("fxanim_underground_switch_up", model);
     trigger SetHintString("Requires power.");
     level flag::wait_till("power_on");
-    trigger SetHintString("Hold ^3[{+activate}]^7 to purchase Trap [Cost: 1500]");
     while(true)
     {
+        trigger SetHintString("Hold ^3[{+activate}]^7 to purchase Trap [Cost: 1500]");
         trigger waittill("trigger", player);
         if (player.score >= 1500)
         {
@@ -1173,6 +1219,16 @@ function LaserEmitter(laserIndex)
                 start = origin + (AnglesToForward(angles) * dist);
                 end = origin + (AnglesToForward(angles) * 9999);
                 traces[i] = BulletTrace(start, end, true, ignore_ent);
+                // If we hit a dead zombie, keep tracing through until we hit something else
+                while (isDefined(traces[i]["entity"]) && !(traces[i]["entity"] zombie_utility::is_zombie()) 
+                && isDefined(traces[i]["entity"].model) && 
+                (traces[i]["entity"].model == "c_t8_zmb_ofc_zombie_male_body1" || 
+                traces[i]["entity"].model == "c_t8_zmb_ofc_zombie_male_body2" || 
+                traces[i]["entity"].model == "c_t8_zmb_ofc_zombie_male_body3"))
+                {
+                    traces[i] = BulletTrace(traces[i]["position"], end, true, traces[i]["entity"]);
+                    WAIT_SERVER_FRAME;
+                }
 
                 lasers[i].origin = origin;
                 lasers[i].angles = angles;
@@ -1210,6 +1266,45 @@ function LaserEmitter(laserIndex)
             final_trace = traces[traces.size - 1];
             spark.origin = final_trace["position"];
             level.laserEndpoints[laserIndex] = spark.origin;
+            // Print information about the entity hit by the laser
+            //if (isDefined(final_trace["entity"])) {
+            //    ent = final_trace["entity"];
+            //    str = "Laser hit entity: ";
+            //    if (isDefined(ent.targetname))
+            //        str += ent.targetname;
+            //    else
+            //        str += "none";
+            //    str += ", classname: ";
+            //    if (isDefined(ent.classname))
+            //        str += ent.classname;
+            //    else
+            //        str += "none";
+            //    str += ", model: ";
+            //    if (isDefined(ent.model))
+            //        str += ent.model;
+            //    else
+            //        str += "none";
+            //    IPrintLnBold(str);
+
+                if (isDefined(ent) && (ent.targetname == "pap_clip" || ent.targetname == "pap_boards" ))
+                {
+                    pap_clip = GetEnt("pap_clip", "targetname");
+                    pap_boards = GetEntArray("pap_boards", "targetname");
+                    pap_clip.origin = (0,0,0);
+                    pap_clip NotSolid();
+                    pap_clip Hide();
+                    pap_clip Delete();
+                    foreach(board in pap_boards)
+                    {
+                        board.origin = (0,0,0);
+                        board NotSolid();
+                        board Hide();
+                        board Delete();
+                    }
+                    level flag::set("40s_pap");
+                    //IPrintLn("DONE");
+                }
+            }
             spark Show();
 
             for(k = 0; k < traces.size; k++)
@@ -1222,30 +1317,6 @@ function LaserEmitter(laserIndex)
                     dmg = 33;
                 else
                     dmg = 50;
-                if(isDefined(level.pap_clip) && ent == level.pap_clip)
-                {
-                    level.pap_clip.origin = (0,0,0);
-                    level.pap_clip NotSolid();
-                    level.pap_clip Hide();
-                    level.pap_clip Delete();
-                    if(isDefined(level.pap_boards))
-                    {
-                        foreach(board in level.pap_boards)
-                        {
-                            if(isDefined(board))
-                            {
-                                board = (0,0,0);
-                                board NotSolid();
-                                board Hide();
-                                board Delete();
-                            }
-                        }
-                    }
-                    level.pap_clip = undefined;
-                    level.pap_boards = undefined;
-                    level flag::set("40s_pap");
-                    continue;
-                }
                 if(IsPlayer(ent))
                 {
                     if(level.NextDamagePlayer < GetTime())
@@ -1258,7 +1329,7 @@ function LaserEmitter(laserIndex)
                 }
                 if(ent zombie_utility::is_zombie())
                 {
-                    ent DoDamage(50, tr["position"]);
+                    ent DoDamage(Ceil((ent.maxhealth)/3), tr["position"]);
                     PlaySoundAtPosition("pl_burnpain", ent.origin);
                     level.NextDamageZombie = GetTime() + 200;
                     death = ent.health <= 0;
@@ -1364,8 +1435,8 @@ function Platform()
 {
     platform = GetEnt("laser_platform", "targetname");
     clip = GetEnt("platform_clip", "targetname");
-    min_z = 1637;
-    max_z = 1747;
+    min_z = platform.origin[2];
+    max_z = platform.origin[2]+110;
 
     current_z = min_z;
     clip EnableLinkTo();
@@ -1388,16 +1459,23 @@ function FaithPlateChamber()
     door = GetEnt("faith_door", "targetname");
     door_true = GetEnt("door_state_true_22", "targetname");
     door_false = GetEnt("door_state_false_22", "targetname");
-    trigger = GetEnt("test_trigger", "targetname");
     cube = GetEnt("portal_cube_test", "targetname");
     button thread Button(door, door_true, door_false);
     switch_trig thread SwitchFaith01();
+    thread DeathTrig();
 
     trigger_4 = GetEnt("lch_door_trigger_4", "targetname");
     door_4 = GetEnt(trigger_4.target, "targetname");
     trigger_4 waittill("trigger", player);
     door_4 DoorOpen(true);
     thread LaserFaithChamber();
+}
+
+function DeathTrig()
+{
+    trigger = GetEnt("death_trigger", "targetname");
+    trigger waittill("trigger", player);
+    player DoDamage(player.health + 1000, player.origin);
 }
 
 function PGChamber01()
@@ -1444,6 +1522,8 @@ function PGChamber02()
 
     level flag::set("pg1_pg2");
 
+    door thread scene::init("fxanim_portal_door_open", door);
+
     button_1 thread Button(door, door_true_1, door_false_1);
     button_2 thread Button(door, door_true_2, door_false_2);
     thread PlacePortalManually(orange_origin,2,true);
@@ -1486,15 +1566,12 @@ function PGChamber03()
 
     portal_gun_trigger SetCursorHint("HINT_NOICON");
     portal_gun_trigger SetHintString("Hold ^3[{+activate}]^7 to pick up Handheld Portal Device");
-    while (1)
-    {
-        portal_gun_trigger waittill("trigger", player);
-        portal_gun_trigger Delete();
-        model Delete();
-        player TakeWeapon(GetWeapon("portal_gun_blue"));
-        level.CurrentPortalGun = "portal_gun";
-        self thread zm_equipment::show_hint_text( "Press ^3[{+actionslot 1}]^7 to wield the Handheld Portal Device.");
-    }
+    portal_gun_trigger waittill("trigger", player);
+    portal_gun_trigger Delete();
+    model Delete();
+    player TakeWeapon(GetWeapon("portal_gun_blue"));
+    level.CurrentPortalGun = "portal_gun";
+    self thread zm_equipment::show_hint_text( "Press ^3[{+actionslot 1}]^7 to wield the Handheld Portal Device.");
 
     door_trigger SetCursorHint("HINT_NOICON");
     door_trigger SetHintString("Hold ^3[{+activate}]^7 to open Door [Cost: 2000]");
@@ -1568,12 +1645,6 @@ function SwitchFaith01()
     }
 }
 
-function PAPDoor()
-{
-    level.pap_clip = GetEnt("pap_clip", "targetname");
-    level.pap_boards = GetEntArray("pap_boards", "targetname");
-}
-
 function FaithPlateInit()
 {
     triggers = GetEntArray("faith_plate_trigger", "targetname");
@@ -1586,10 +1657,11 @@ function FaithPlate()
     model = GetEnt(self.target, "targetname");
     target = GetEnt(model.target, "targetname");
     model thread scene::init("fxanim_faith_plate_launch_up", model);
-    self thread FaithWatchCubes(model, target);
+    //self thread FaithWatchCubes(model, target);
     while(1)
     {
         self waittill("trigger", player);
+        player SetVelocity((0,0,0));
         if (model.model == "faith_plate")
             model thread scene::play("fxanim_faith_plate_launch_angle", model);
         else
@@ -1628,8 +1700,46 @@ function FaithWatchCubes(model,target)
                 new_cube NotSolid();
                 new_cube PhysicsLaunch(new_cube.origin, LaunchToTarget(new_cube.origin, target.origin, 2)*0.12);
                 level.SwitchCube1 = new_cube;
+                new_cube thread MonitorFaithCube(new_cube);
                 wait(.2);
-            }  
+            }
+        }
+        WAIT_SERVER_FRAME;
+    }
+}
+
+function MonitorFaithCube(cube)
+{
+    while(isDefined(cube))
+    {
+        prev_origin = cube.origin;
+        wait(1);
+        if (!isDefined(cube))
+            break;
+        if (cube.origin == prev_origin)
+        {
+            new_cube = Spawn("script_model", cube.origin);
+            if (isDefined(cube.model))
+                new_cube SetModel(cube.model);
+            if (isDefined(cube.angles))
+                new_cube.angles = cube.angles;
+            if (isDefined(cube.targetname))
+                new_cube.targetname = cube.targetname;
+            if (isDefined(cube.script_int))
+                new_cube.script_int = cube.script_int;
+            if (isDefined(cube.isBeingHeld))
+                new_cube.isBeingHeld = cube.isBeingHeld;
+            if (isDefined(cube.portalClone))
+                new_cube.portalClone = cube.portalClone;
+            if (isDefined(cube.portalClone2))
+                new_cube.portalClone2 = cube.portalClone2;
+            new_cube NotSolid();
+            new_cube PhysicsLaunch(new_cube.origin, (0,0,0));
+            new_cube clientfield::set("model_change_color", 1 );
+            level.SwitchCube1 = new_cube;
+            cube.origin = (0,0,0);
+            cube Delete();
+            break;
         }
         WAIT_SERVER_FRAME;
     }
@@ -1697,11 +1807,14 @@ function DoorOpen(state)
             self thread scene::play("fxanim_sliding_door_double_open", self);
         else
             self thread scene::play("fxanim_portal_door_open", self);
+        self NotSolid();
         clip Hide();
     }
     else
     {
-        clip Show();
+        //clip.origin = self.origin
+        self Show();
+        self Solid();
         if (self.model == "sliding_door_double_noglass")
             self thread scene::play("fxanim_sliding_door_double_close", self);
         else
@@ -1925,7 +2038,22 @@ function LoopElevator()
     door_clip = GetEnt(platform.target, "targetname");
     clip = GetEnt(door_clip.target, "targetname");
     struct = GetEnt("ele_origin", "targetname");
-    
+
+    gate_left = GetEnt("hub_gate_left", "targetname");
+    left_origin = GetEnt(gate_left.target, "targetname");
+    gate_right = GetEnt("hub_gate_right", "targetname");
+    right_origin = GetEnt(gate_right.target, "targetname");
+    gate_clip = GetEnt("hub_gate_clip", "targetname");
+    gate_trigger = GetEnt("hub_gate_trigger", "targetname");
+
+    gate_left EnableLinkTo();
+    gate_left LinkTo(left_origin);
+    gate_right EnableLinkTo();
+    gate_right LinkTo(right_origin);
+    gate_clip Hide();
+    left_origin RotateYaw(-90, 1);
+    right_origin RotateYaw(90, 1);
+
 	elevator thread scene::play("fxanim_elevator_b_leave", elevator);
 	self waittill("trigger", player);
 	elevator thread scene::play("fxanim_elevator_b_arrive", elevator);
@@ -1952,9 +2080,10 @@ function LoopElevator()
     origin RotateYaw(180,5);
     platform RotateYaw(180,5);
     level flag::set("start3_hub_elevator");
-    zm_zonemgr::disable_zone("start_zone");
-    zm_zonemgr::disable_zone("start2_zone");
-    zm_zonemgr::disable_zone("start3_zone");
+    level flag::set("hub_elevator_hub");
+    //zm_zonemgr::disable_zone("start_zone");
+    //zm_zonemgr::disable_zone("start2_zone");
+    //zm_zonemgr::disable_zone("start3_zone");
     SetDvar("ai_disableSpawn", 1);
     foreach (zombie in getaispeciesarray(level.zombie_team, "all"))
     {
@@ -1968,6 +2097,12 @@ function LoopElevator()
     wait(1);
     elevator thread scene::play("fxanim_elevator_b_open", elevator);
     door_clip Hide();
+
+    gate_trigger waittill("trigger", player);
+    gate_clip Show();
+    left_origin RotateYaw(90, 1);
+    right_origin RotateYaw(-90, 1);
+
     while(1)
     {
         if (level.loop_ele != 1)
@@ -1975,6 +2110,9 @@ function LoopElevator()
         else
         {
             level.loop_ele = 0;
+            gate_clip Hide();
+            left_origin RotateYaw(-90, 1);
+            right_origin RotateYaw(90, 1);
             elevator thread scene::play("fxanim_elevator_b_close", elevator);
             door_clip Show();
             foreach (player in GetPlayers())
@@ -1987,7 +2125,12 @@ function LoopElevator()
             }
             wait(3);
             elevator thread scene::play("fxanim_elevator_b_open", elevator);
+            level thread zm_audio::sndMusicSystem_PlayState("main_01");
             door_clip Hide();
+            gate_trigger waittill("trigger", player);
+            gate_clip Show();
+            left_origin RotateYaw(90, 1);
+            right_origin RotateYaw(-90, 1);
         }
     }
 }
@@ -2265,7 +2408,7 @@ function Boss()
     boss_clip = GetEntArray("boss_clip", "targetname");
 	arms = GetEnt("brodes_arms", "targetname");
     boss thread scene::play("fxanim_brodes_boss_idle", boss);
-    origin = util::spawn_model("brodes_core",boss.origin, boss.angles);
+    origin = util::spawn_model("tag_origin",boss.origin, boss.angles);
     arms_origin = util::spawn_model("tag_origin",arms.origin, arms.angles);
 	arms EnableLinkTo();
     boss EnableLinkTo();
@@ -2608,7 +2751,7 @@ function WatchCoreHealth(boss)
             level.BossWave--;
             level.CoreFall = false;
             self Delete();
-            IPrintLnBold("ININCERATE");
+            //IPrintLnBold("ININCERATE");
         }
         WAIT_SERVER_FRAME;
     }
@@ -3583,4 +3726,109 @@ function portal_round_spawn()
 {
         level.zombie_force_run = 9999;
         zm::round_spawning();
+}
+
+function enemy_location_override( zombie, enemy )
+{
+	AIProfile_BeginEntry( "factory-enemy_location_override" );
+
+	if ( IS_TRUE( zombie.is_trapped ) )
+	{
+		AIProfile_EndEntry();
+		return zombie.origin;
+	}
+
+	AIProfile_EndEntry();
+	return undefined;
+}
+
+// --------------------------------
+//	NO TARGET OVERRIDE
+// --------------------------------
+function validate_and_set_no_target_position( position )
+{
+	if( IsDefined( position ) )
+	{
+		goal_point = GetClosestPointOnNavMesh( position.origin, 100 );
+		if( IsDefined( goal_point ) )
+		{
+			self SetGoal( goal_point );
+			self.has_exit_point = 1;
+			return true;
+		}
+	}
+	
+	return false;
+}
+
+function no_target_override( zombie )
+{
+	if( isdefined( zombie.has_exit_point ) )
+	{
+		return;
+	}
+	
+	players = level.players;
+	
+	dist_zombie = 0;
+	dist_player = 0;
+	dest = 0;
+
+	if ( isdefined( level.zm_loc_types[ "dog_location" ] ) )
+	{
+		locs = array::randomize( level.zm_loc_types[ "dog_location" ] );
+		
+		for ( i = 0; i < locs.size; i++ )
+		{
+			found_point = false;
+			foreach( player in players )
+			{
+				if( player laststand::player_is_in_laststand() )
+				{
+					continue;
+				}
+				
+				away = VectorNormalize( self.origin - player.origin );
+				endPos = self.origin + VectorScale( away, 600 );
+				dist_zombie = DistanceSquared( locs[i].origin, endPos );
+				dist_player = DistanceSquared( locs[i].origin, player.origin );
+		
+				if ( dist_zombie < dist_player )
+				{
+					dest = i;
+					found_point= true;
+				}
+				else
+				{
+					found_point = false;
+				}
+			}
+			if( found_point )
+			{
+				if( zombie validate_and_set_no_target_position( locs[i] ) )
+				{
+					return;
+				}
+			}
+		}
+	}
+	
+	
+	escape_position = zombie giant_cleanup::get_escape_position_in_current_zone();
+			
+	if( zombie validate_and_set_no_target_position( escape_position ) )
+	{
+		return;
+	}
+	
+	escape_position = zombie giant_cleanup::get_escape_position();
+	
+	if( zombie validate_and_set_no_target_position( escape_position ) )
+	{
+		return;
+	}
+	
+	zombie.has_exit_point = 1;
+	
+	zombie SetGoal( zombie.origin );
 }
