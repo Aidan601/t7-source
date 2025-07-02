@@ -280,7 +280,6 @@ function main()
 
     zm_usermap::main();
 
-    level.dog_rounds_allowed = false;
     zm_perks::spare_change();
     level.round_spawn_func = &portal_round_spawn;
     callback::on_spawned( &watch_max_ammo );
@@ -313,6 +312,8 @@ function main()
     thread PortalGunFireTrace();
 	callback::on_connect( &PortalGunGravitySystem);
 
+    level.loop_ele = 0;
+
 	//thread ButtonInit();
 	//thread DoorInit();
     thread Toilet();
@@ -323,13 +324,13 @@ function main()
     thread BurnItems();
     thread Chamber00();
     //thread BrodesCore();
-    thread LaserChamber01();
+    //thread LaserChamber01();
     //thread Chamber01();
     //thread Chamber02();
     thread Hub();
     thread PAPDoor();
     thread EndGameButtons();
-    thread LaserChamber02();
+    //thread LaserChamber02();
     thread FaithPlateChamber();
     thread FaithPlateInit();
     thread PGChamber01();
@@ -368,7 +369,13 @@ function usermap_test_zone_init()
     zm_zonemgr::add_adjacent_zone( "fall_zone", "40s_zone", "fall_40s");
     zm_zonemgr::add_adjacent_zone( "40s_zone", "pap_zone", "40s_pap");
     zm_zonemgr::add_adjacent_zone( "fall_zone", "boss_zone", "fall_boss");
-
+    zm_zonemgr::add_adjacent_zone( "pump_bottom_zone", "pg1_zone", "pump_bottom_pg1");
+    zm_zonemgr::add_adjacent_zone( "pg1_zone", "pg2_zone", "pg1_pg2");
+    zm_zonemgr::add_adjacent_zone( "pg2_zone", "pg3_zone", "pg2_pg3");
+    zm_zonemgr::add_adjacent_zone( "fall_zone", "lch1_zone", "fall_lch1" );
+    zm_zonemgr::add_adjacent_zone( "lch1_zone", "lch2_zone", "lch1_lch2" );
+    zm_zonemgr::add_adjacent_zone( "lch2_zone", "lch3_zone", "lch2_lch3" );
+    zm_zonemgr::add_adjacent_zone( "lch3_zone", "lch4_zone", "lch3_lch4" );
 
     level flag::init( "always_on" );
 	level flag::set( "always_on" );
@@ -407,7 +414,7 @@ function Camera()
                 continue;
                 
             eye = player GetTagOrigin("j_head");
-            dir = VectorToAngles(self.origin - eye);
+            dir = VectorToAngles(eye - self.origin);
             self RotateTo(dir,0.1);
             wait(0.1);
         }
@@ -668,11 +675,14 @@ function EquipPortalGun()
 {
 	self endon("death");
 	self endon("disconnect");
+    level.CurrentPortalGun = "portal_gun_blue";
+    //self zm_weapons::weapon_give(GetWeapon("portal_gun"),false,false,true,true);
+    self thread zm_equipment::show_hint_text( "Press ^3[{+actionslot 1}]^7 to wield the Handheld Portal Device.");
 	while(self.sessionstate == "playing")
 	{
-		if(self ActionSlotOneButtonPressed() && self GetCurrentWeapon() != GetWeapon("portal_gun"))
+		if(self ActionSlotOneButtonPressed() && self GetCurrentWeapon() != GetWeapon(level.CurrentPortalGun))
 		{
-			self zm_weapons::weapon_give(GetWeapon("portal_gun"),false,false,true,true);
+			self zm_weapons::weapon_give(GetWeapon(level.CurrentPortalGun),false,false,true,true);
         }
         WAIT_SERVER_FRAME;
     }
@@ -824,6 +834,7 @@ function Borealis()
     wait(1);
     button thread scene::play("fxanim_underground_switch_up", button);
     borealis Delete();
+    
 }
 
 function IntercomJohnson()
@@ -946,14 +957,31 @@ function LaserTrapTimer()
     level.active = false;
 }
 
+function LaserFaithChamber()
+{
+    emitter = GetEnt("laser_emitter_3", "targetname");
+    catcher = GetEnt("laser_catcher_3", "targetname");
+    emitter thread LaserEmitter(3);
+    catcher thread LaserCatcher(undefined,undefined,3);
+}
+
 function LaserChamber01()
 {
     emitter = GetEnt("laser_emitter", "targetname");
     catcher = GetEnt("laser_catcher", "targetname");
+    trigger = GetEnt("lch_door_trigger_0", "targetname");
+    door = GetEnt(trigger.target, "targetname");
     level.platform_1 = false;
     thread Platform();
+    trigger waittill("trigger", player);
+    door DoorOpen(true);
     emitter thread LaserEmitter(0);
     catcher thread LaserCatcher(undefined,undefined,0);
+    trigger_1 = GetEnt("lch_door_trigger_1", "targetname");
+    door_1 = GetEnt(trigger_1.target, "targetname");
+    trigger_1 waittill("trigger", player);
+    door_1 DoorOpen(true);
+    thread LaserChamber02();
 }
 
 function LaserChamber02()
@@ -1000,8 +1028,10 @@ function LaserChamber02()
     emitter_2 thread LaserEmitter(2);
     catcher_1 thread LaserCatcher(true_sign_1, false_sign_1,1);
     catcher_2 thread LaserCatcher(true_sign_2, false_sign_2,2);
-    trigger_close waittill("trigger", player);
-    door DoorOpen(false);
+    //trigger_close waittill("trigger", player);
+    //door DoorOpen(false);
+
+    thread FaithPlateChamber();
 
     while(1)
     {
@@ -1245,6 +1275,8 @@ function LaserCatcher(true_sign, false_sign, index)
                     level.Chm02_1 = state;
                 else if (index == 2)
                     level.Chm02_2 = state;
+                else if (index == 3)
+                    level.Chm03_1 = state;
             }
         }
         WAIT_SERVER_FRAME;
@@ -1256,7 +1288,8 @@ function Platform()
     platform = GetEnt("laser_platform", "targetname");
     clip = GetEnt("platform_clip", "targetname");
     min_z = 1637;
-    max_z = 1747;
+    max_z = min_z+110;
+
     current_z = min_z;
     clip EnableLinkTo();
     clip LinkTo(platform);
@@ -1281,7 +1314,13 @@ function FaithPlateChamber()
     trigger = GetEnt("test_trigger", "targetname");
     cube = GetEnt("portal_cube_test", "targetname");
     button thread Button(door, door_true, door_false);
-    switch_trig thread SwitchFaith01();    
+    switch_trig thread SwitchFaith01();
+
+    trigger_4 = GetEnt("lch_door_trigger_4", "targetname");
+    door_4 = GetEnt(trigger_4.target, "targetname");
+    trigger_4 waittill("trigger", player);
+    door_4 DoorOpen(true);
+    thread LaserFaithChamber();
 }
 
 function PGChamber01()
@@ -1298,17 +1337,19 @@ function PGChamber01()
 
     button thread Button(door, door_true, door_false);
     trigger waittill("trigger", player);
+    level flag::set("pump_bottom_pg1");
     dropper thread Dropper();
     model = GetEnt(portal_gun_trigger.target, "targetname");
     portal_gun_trigger SetCursorHint("HINT_NOICON");
     portal_gun_trigger SetHintString("Hold ^3[{+activate}]^7 to pick up Handheld Portal Device");
     portal_gun_trigger waittill("trigger", player);
     portal_gun_trigger Delete();
+    model Delete();
     player thread EquipPortalGun();
-    player thread zm_equipment::show_hint_text( "Press ^3[{+actionslot 1}]^7 to wield the Portal Gun.");
+    wait(1);
     thread PlacePortalManually(orange_origin,2,true);
     close_trigger waittill("trigger", player);
-    door thread DoorOpen(false);
+    //door thread DoorOpen(false);
     thread PGChamber02();
 }
 
@@ -1323,6 +1364,8 @@ function PGChamber02()
     door_false_2 = GetEnt("door_state_false_pg2_2", "targetname");
     orange_origin = GetEnt("orange_portal_pg2", "targetname");
     close_trigger = GetEnt("pg2_close_door", "targetname");
+
+    level flag::set("pg1_pg2");
 
     button_1 thread Button(door, door_true_1, door_false_1);
     button_2 thread Button(door, door_true_2, door_false_2);
@@ -1342,21 +1385,59 @@ function PGChamber02()
         }
         WAIT_SERVER_FRAME;
     }    
-    door thread DoorOpen(false);
-    thread PGChamber03();
+    //door thread DoorOpen(false);
 }
 
 function DoubleDoor()
 {
-    level.doubleDoor = 0;
+    //level.doubleDoor = 0;
     self waittill("trigger", player);
-    level.doubleDoor = -1;
+    level flag::set("pg2_pg3");
+    thread PGChamber03();
 }
 
 function PGChamber03()
 {
     orange_origin = GetEnt("orange_portal_pg3", "targetname");
+    door_trigger = GetEnt("door_pg3_trigger","targetname");
+    door = GetEnt(door_trigger.target, "targetname");
+    clip = GetEnt(door.target, "targetname");
+    portal_gun_trigger = GetEnt("portal_gun_pickup_trigger", "targetname");
+    model = GetEnt(portal_gun_trigger.target, "targetname");
+    door_trigger Hide();
     thread PlacePortalManually(orange_origin, 2, true);
+
+    portal_gun_trigger SetCursorHint("HINT_NOICON");
+    portal_gun_trigger SetHintString("Hold ^3[{+activate}]^7 to pick up Handheld Portal Device");
+    while (1)
+    {
+        portal_gun_trigger waittill("trigger", player);
+        portal_gun_trigger Delete();
+        model Delete();
+        player TakeWeapon(GetWeapon("portal_gun_blue"));
+        level.CurrentPortalGun = "portal_gun";
+        self thread zm_equipment::show_hint_text( "Press ^3[{+actionslot 1}]^7 to wield the Handheld Portal Device.");
+    }
+
+    door_trigger SetCursorHint("HINT_NOICON");
+    door_trigger SetHintString("Hold ^3[{+activate}]^7 to open Door [Cost: 2000]");
+    while (1)
+    {
+        door_trigger waittill("trigger", player);
+        if (player.score >= 2000)
+        {
+            player PlayLocalSound("zmb_cha_ching");
+            player.score -= 2000;
+            door thread DoorOpen(true);
+            door_trigger Hide();
+            clip Hide();
+            break;
+        }
+        else
+        {
+            player PlayLocalSound("zmb_no_cha_ching");
+        }
+    }
 }
 
 function Dropper()
@@ -1366,6 +1447,7 @@ function Dropper()
     wait(1);
     cube = Spawn("script_model", dropper_origin.origin);
     cube SetModel("m_0a7141f5_metal_box_clean");
+    cube clientfield::set("model_change_color", 1);
     cube.origin = dropper_origin.origin;
     cube.angles = (0, 0, 0);
     cube.targetname = "portal_cube";
@@ -1677,6 +1759,10 @@ function ElevatorInit()
     {
         trigger thread Elevator();
     }
+    loop_elevator = GetEnt("portal_elevator_loop", "targetname");
+    loop_elevator thread LoopElevator();
+    pg_elevator = GetEnt("pg_elevator", "targetname");
+    pg_elevator thread PGElevator();
     underground_elevators = GetEntArray("underground_elevator","targetname");
     foreach( trigger in underground_elevators )
     {
@@ -1715,21 +1801,101 @@ function Elevator()
     origin MoveZ(platform.script_int,5);
     platform MoveZ(platform.script_int,5);
     origin PlayLoopSound("elevator_depart");
-    if (isDefined(elevator.script_int) && elevator.script_int == 1)
+    wait(5);
+    origin StopLoopSound(1);
+    wait(1);
+    elevator thread scene::play("fxanim_elevator_b_open", elevator);
+    door_clip Hide();
+}
+
+function PGElevator()
+{
+    elevator = GetEnt(self.target, "targetname");
+    close_trigger = GetEnt(elevator.target, "targetname");
+    platform = GetEnt(close_trigger.target, "targetname");
+    door_clip = GetEnt(platform.target, "targetname");
+    clip = GetEnt(door_clip.target, "targetname");
+
+	elevator thread scene::play("fxanim_elevator_b_leave", elevator);
+    while(1)
     {
-        origin RotateYaw(180,5);
-        platform RotateYaw(180,5);
-        level flag::set("start3_hub_elevator");
-        zm_zonemgr::disable_zone("start_zone");
-        zm_zonemgr::disable_zone("start2_zone");
-        zm_zonemgr::disable_zone("start3_zone");
-        SetDvar("ai_disableSpawn", 1);
-        foreach (zombie in getaispeciesarray(level.zombie_team, "all"))
+        self waittill("trigger", player);
+        elevator thread scene::play("fxanim_elevator_b_arrive", elevator);
+        door_clip Hide();
+        close_trigger waittill("trigger", player);
+        origin = Spawn("script_origin", elevator.origin);
+        elevator EnableLinkTo();
+        elevator LinkTo(origin);
+        elevator thread scene::play("fxanim_elevator_b_close", elevator);
+        door_clip Show();
+        door_clip EnableLinkTo();
+        clip EnableLinkTo();
+        door_clip LinkTo(platform);
+        clip LinkTo(platform);
+        platform SetMovingPlatformEnabled(true);
+        elevator SetMovingPlatformEnabled(true);
+        origin SetMovingPlatformEnabled(true);
+        wait(1.16);
+        origin MoveZ(platform.script_int,5);
+        platform MoveZ(platform.script_int,5);
+        origin PlayLoopSound("elevator_depart");
+        wait(2);
+        level thread lui::screen_flash(1, 2, 1, 1, "black");
+        wait(1);
+        level.loop_ele = 1;
+        wait(2);
+        origin StopLoopSound(1);
+        origin MoveZ(platform.script_int * -1,0.1);
+        platform MoveZ(platform.script_int * -1,0.1);
+        wait(0.1);
+        elevator thread scene::play("fxanim_elevator_b_leave", elevator);
+    }
+}
+
+function LoopElevator()
+{
+    elevator = GetEnt(self.target, "targetname");
+    close_trigger = GetEnt(elevator.target, "targetname");
+    platform = GetEnt(close_trigger.target, "targetname");
+    door_clip = GetEnt(platform.target, "targetname");
+    clip = GetEnt(door_clip.target, "targetname");
+    struct = GetEnt("ele_origin", "targetname");
+    
+	elevator thread scene::play("fxanim_elevator_b_leave", elevator);
+	self waittill("trigger", player);
+	elevator thread scene::play("fxanim_elevator_b_arrive", elevator);
+    door_clip Hide();
+	close_trigger waittill("trigger", player);
+    origin = Spawn("script_origin", elevator.origin);
+    elevator EnableLinkTo();
+    elevator LinkTo(origin);
+    struct EnableLinkTo();
+    struct LinkTo(origin);
+	elevator thread scene::play("fxanim_elevator_b_close", elevator);
+    door_clip Show();
+    door_clip EnableLinkTo();
+    clip EnableLinkTo();
+    door_clip LinkTo(platform);
+    clip LinkTo(platform);
+    platform SetMovingPlatformEnabled(true);
+    elevator SetMovingPlatformEnabled(true);
+    origin SetMovingPlatformEnabled(true);
+    wait(1.16);
+    origin MoveZ(platform.script_int,5);
+    platform MoveZ(platform.script_int,5);
+    origin PlayLoopSound("elevator_depart");
+    origin RotateYaw(180,5);
+    platform RotateYaw(180,5);
+    level flag::set("start3_hub_elevator");
+    zm_zonemgr::disable_zone("start_zone");
+    zm_zonemgr::disable_zone("start2_zone");
+    zm_zonemgr::disable_zone("start3_zone");
+    SetDvar("ai_disableSpawn", 1);
+    foreach (zombie in getaispeciesarray(level.zombie_team, "all"))
+    {
+        if (isDefined(zombie) && zombie zombie_utility::is_zombie())
         {
-            if (isDefined(zombie) && zombie zombie_utility::is_zombie())
-            {
-                zombie Kill();
-            }
+            zombie Kill();
         }
     }
     wait(5);
@@ -1737,7 +1903,30 @@ function Elevator()
     wait(1);
     elevator thread scene::play("fxanim_elevator_b_open", elevator);
     door_clip Hide();
+    while(1)
+    {
+        if (level.loop_ele != 1)
+            wait(0.1);
+        else
+        {
+            level.loop_ele = 0;
+            elevator thread scene::play("fxanim_elevator_b_close", elevator);
+            door_clip Show();
+            foreach (player in GetPlayers())
+            {
+                if (IsAlive(player))
+                {
+                    player SetOrigin(struct.origin);
+                    player SetPlayerAngles(struct.angles);
+                }
+            }
+            wait(3);
+            elevator thread scene::play("fxanim_elevator_b_open", elevator);
+            door_clip Hide();
+        }
+    }
 }
+
 
 function UndergroundElevator()
 {
@@ -1793,6 +1982,15 @@ function UndergroundElevator()
                 thread BossSpawn();
                 boss_switch = GetEnt("boss_switch_trigger", "targetname");
                 boss_switch thread SwitchBoss();
+            }
+            //
+            if (elevator.script_int == 2)
+            {
+                boss_spawn = GetEnt("lch_origin", "targetname");
+                level flag::set("fall_lch1");
+                player SetOrigin(boss_spawn.origin);
+                player SetPlayerAngles(boss_spawn.angles);
+                thread LaserChamber01();
             }
         }
     }
@@ -2048,7 +2246,8 @@ function Boss()
                 foreach (player in GetPlayers())
                 {
                     eye = player GetTagOrigin("j_head");
-                    dir = VectorToAngles(origin.origin - eye);
+                    dir = VectorToAngles(eye - origin.origin);
+                    dir = (origin.angles[0],dir[1],dir[2]);
                     origin RotateTo(dir,0.1);
                     wait(0.1);
                 }
@@ -2059,7 +2258,8 @@ function Boss()
                 foreach (player in GetPlayers())
                 {
                     eye = player GetTagOrigin("j_head");
-                    dir = VectorToAngles(origin.origin - eye);
+                    dir = VectorToAngles(eye - origin.origin);
+                    dir = (origin.angles[0],dir[1],dir[2]);
                     origin RotateTo(dir,0.1);
                     wait(0.1);
                 }
@@ -3175,12 +3375,13 @@ function PortalGunInit()
 function PortalGunFireTrace()
 {
     weapon = GetWeapon("portal_gun");
+    weapon_2 = GetWeapon("portal_gun_blue");
 
     while (true)
     {
         foreach (player in GetPlayers())
         {
-            if (player GetCurrentWeapon() == weapon)
+            if (player GetCurrentWeapon() == weapon || player GetCurrentWeapon() == weapon_2)
             {
                 portal_type = 0;
 
@@ -3189,7 +3390,7 @@ function PortalGunFireTrace()
                     portal_type = 1;
                     PlaySoundAtPosition("wpn_portal_gun_fire_blue", player.origin);
                 }
-                else if (player AdsButtonPressed())
+                else if (player AdsButtonPressed() && player GetCurrentWeapon() == weapon)
                 {
                     portal_type = 2;
                     PlaySoundAtPosition("wpn_portal_gun_fire_red", player.origin);
