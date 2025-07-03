@@ -295,9 +295,9 @@ function main()
     level._effect["laser_beam"] = "dlc0/factory/fx_laserbeam_long_factory";
 
 	//Replace starting weapon
-	startingWeapon = "";
-	weapon = getWeapon(startingWeapon);
-	level.start_weapon = (weapon);
+    startingWeapon = "";
+    weapon = GetWeapon(startingWeapon);
+    level.start_weapon = (weapon);
 	
 	level._zombie_custom_add_weapons =&custom_add_weapons;
 	
@@ -333,7 +333,7 @@ function main()
     thread Hub();
     thread EndGameButtons();
     //thread LaserChamber02();
-    thread FaithPlateChamber();
+    //thread FaithPlateChamber();
     thread FaithPlateInit();
     thread PGChamber01();
 }
@@ -622,13 +622,19 @@ function Chamber02()
         arm thread scene::play("fxanim_intro3_arm", arm);
     }
     PlaySoundAtPosition("floor_collapse", player.origin);
+    PlaySoundAtPosition("brodes_dialog_03", (0,0,0));
 
     trigger_pickup = GetEnt("trigger_pickup", "targetname");
     pistol = GetEnt(trigger_pickup.target, "targetname");
     trigger_pickup_clip = GetEnt("trigger_pickup_clip", "targetname");
     trigger_pickup SetCursorHint("HINT_NOICON");
     trigger_pickup SetHintString("Hold ^3[{+activate}]^7 to pick up weapon");
+    wait(2.7);
+    PlaySoundAtPosition("brodes_dialog_04", (0,0,0));
+    wait(6.4);
+    //brodes_dialog_05
     trigger_pickup waittill("trigger", player);
+
     trigger_pickup_clip.origin = (0,0,0);
     trigger_pickup_clip Hide();
     trigger_pickup_clip Delete();
@@ -640,11 +646,13 @@ function Chamber02()
     player util::show_hud(true);
     level flag::set("start_start2");
     level flag::set("start2_start3");
+    PlaySoundAtPosition("brodes_dialog_06", (0,0,0));
     door3 = GetEnt("portal_door_06", "targetname");
     trigger3 = GetEnt("portal_door_06_trigger", "targetname");
     trigger_close3 = GetEnt("portal_door_06_trigger_close", "targetname");
     trigger3 waittill("trigger", player);
     door3 thread DoorOpen(true);
+    PlaySoundAtPosition("brodes_dialog_07", (0,0,0));
     trigger_close3 waittill("trigger", player);
     door3 thread DoorOpen(false);
     //thread Hub();
@@ -685,16 +693,20 @@ function BrodesCore()
 function BrodesPickup()
 {
     trigger = GetEnt(self.target, "targetname");
-    clip = GetEnt(trigger.clip, "targetname");
+    clip = GetEnt(trigger.target, "targetname");
     trigger Hide();
-    wait(2); //DIALOG WAIT TODO
+    PlaySoundAtPosition("brodes_dialog_01",(0,0,0));
+    wait(21); //DIALOG WAIT TODO
 
     trigger Show();
     trigger SetCursorHint("HINT_NOICON");
-    trigger SetHintString("Hold ^3[{+activate}]^7 to pick up Brodes' Core");
+    trigger SetHintString("Hold ^3[{+activate}]^7 to pick up Brodes Core");
     trigger waittill("trigger", player);
     trigger Delete();
     clip.origin = (0,0,0);
+    self Hide();
+    PlaySoundAtPosition("brodes_dialog_02",(0,0,0));
+    wait(4);
     clip Hide();
     clip Delete();
     self Delete();
@@ -749,6 +761,8 @@ function Hub()
     level.water_switch_count = 0;
     switch_01_trig thread WaterSwitch();
     switch_02_trig thread WaterSwitch();
+    wait(2);
+    PlaySoundAtPosition("brodes_dialog_08", (0,0,0));
     while(level.water_switch_count != 2)
     {
         foreach (player in GetPlayers())
@@ -1007,6 +1021,11 @@ function LaserFaithChamber()
 {
     emitter = GetEnt("laser_emitter_3", "targetname");
     catcher = GetEnt("laser_catcher_3", "targetname");
+    button = GetEnt("laserfaithbutton", "targetname");
+    door = GetEnt("laserfaith_door", "targetname");
+    true_sign = GetEnt("door_state_true_05", "targetname");
+    false_sign = GetEnt("door_state_false_05", "targetname");
+
     emitter thread LaserEmitter(3);
     catcher thread LaserCatcher(undefined,undefined,3);
     thread CatcherArms1();
@@ -1014,7 +1033,8 @@ function LaserFaithChamber()
     catcher thread LaserCatcher(undefined,undefined,4);
     thread CatcherArms2();
     trigger = GetEnt("switch_888_trigger", "targetname");
-    trigger thread SwitchFaith01();
+    trigger thread SwitchFaith02();
+    button Button(door,true_sign,false_sign);
 }
 
 function CatcherArms1()
@@ -1053,6 +1073,14 @@ function CatcherArms2()
     clip_2 EnableLinkTo();
     clip_2 LinkTo(arms_2[0],"panel_top");
     prev_state = false;
+    foreach (arm in arms)
+    {
+        arm thread scene::play("fxanim_telescope_arm_128", arm);
+    }
+    foreach (arm_2 in arms_2)
+    {
+        arm_2 thread scene::play("fxanim_telescope_arm_128", arm_2);
+    }
     while (1)
     {
         current_state = isDefined(level.Chm03_2) && level.Chm03_2;
@@ -1094,6 +1122,7 @@ function LaserChamber01()
     trigger_1 = GetEnt("lch_door_trigger_1", "targetname");
     door_1 = GetEnt(trigger_1.target, "targetname");
     trigger_1 waittill("trigger", player);
+    level flag::set("lch1_lch2");
     door_1 DoorOpen(true);
     thread LaserChamber02();
 }
@@ -1145,7 +1174,7 @@ function LaserChamber02()
     //trigger_close waittill("trigger", player);
     //door DoorOpen(false);
 
-    //thread FaithPlateChamber();
+    thread FaithPlateChamber();
 
     while(1)
     {
@@ -1267,24 +1296,25 @@ function LaserEmitter(laserIndex)
             spark.origin = final_trace["position"];
             level.laserEndpoints[laserIndex] = spark.origin;
             // Print information about the entity hit by the laser
-            //if (isDefined(final_trace["entity"])) {
-            //    ent = final_trace["entity"];
-            //    str = "Laser hit entity: ";
-            //    if (isDefined(ent.targetname))
-            //        str += ent.targetname;
-            //    else
-            //        str += "none";
-            //    str += ", classname: ";
-            //    if (isDefined(ent.classname))
-            //        str += ent.classname;
-            //    else
-            //        str += "none";
-            //    str += ", model: ";
-            //    if (isDefined(ent.model))
-            //        str += ent.model;
-            //    else
-            //        str += "none";
-            //    IPrintLnBold(str);
+            if (isDefined(final_trace["entity"])) 
+            {
+                ent = final_trace["entity"];
+                //    str = "Laser hit entity: ";
+                //    if (isDefined(ent.targetname))
+                //        str += ent.targetname;
+                //    else
+                //        str += "none";
+                //    str += ", classname: ";
+                //    if (isDefined(ent.classname))
+                //        str += ent.classname;
+                //    else
+                //        str += "none";
+                //    str += ", model: ";
+                //    if (isDefined(ent.model))
+                //        str += ent.model;
+                //    else
+                //        str += "none";
+                //    IPrintLnBold(str);
 
                 if (isDefined(ent) && (ent.targetname == "pap_clip" || ent.targetname == "pap_boards" ))
                 {
@@ -1436,7 +1466,7 @@ function Platform()
     platform = GetEnt("laser_platform", "targetname");
     clip = GetEnt("platform_clip", "targetname");
     min_z = platform.origin[2];
-    max_z = platform.origin[2]+110;
+    max_z = platform.origin[2]+96;
 
     current_z = min_z;
     clip EnableLinkTo();
@@ -1454,6 +1484,12 @@ function Platform()
 
 function FaithPlateChamber()
 {
+    trigger_1 = GetEnt("lch_door_trigger_3", "targetname");
+    door_1 = GetEnt(trigger_1.target, "targetname");
+    trigger_1 waittill("trigger", player);
+    level flag::set("lch2_lch3");
+    door_1 DoorOpen(true);
+    
     button = GetEnt("button_03", "targetname");
     switch_trig = GetEnt("faith_switch_trig", "targetname");
     door = GetEnt("faith_door", "targetname");
@@ -1467,6 +1503,7 @@ function FaithPlateChamber()
     trigger_4 = GetEnt("lch_door_trigger_4", "targetname");
     door_4 = GetEnt(trigger_4.target, "targetname");
     trigger_4 waittill("trigger", player);
+    level flag::set("lch3_lch4");
     door_4 DoorOpen(true);
     thread LaserFaithChamber();
 }
@@ -1600,8 +1637,13 @@ function Dropper()
     self thread scene::play("fxanim_item_dropper_open", self);
     wait(1);
     cube = Spawn("script_model", dropper_origin.origin);
-    cube SetModel("m_0a7141f5_metal_box_clean");
-    cube clientfield::set("model_change_color", 1);
+    if (isDefined(self.script_int) && self.script_int == 1)
+        cube SetModel("m_0a7141f5_reflection_cube");
+    else
+    {
+        cube SetModel("m_0a7141f5_metal_box_clean");
+        cube clientfield::set("model_change_color", 1);
+    }
     cube.origin = dropper_origin.origin;
     cube.angles = (0, 0, 0);
     cube.targetname = "portal_cube";
@@ -1628,16 +1670,45 @@ function SwitchFaith01()
         dropper thread scene::play("fxanim_item_dropper_open", dropper);
         wait(1);
         cube = Spawn("script_model", dropper_origin.origin);
-        if (dropper.script_int == 1)
-            cube SetModel("m_0a7141f5_reflection_cube");
-        else
-            cube SetModel("m_0a7141f5_metal_box_clean");
+        cube SetModel("m_0a7141f5_metal_box_clean");
+        cube clientfield::set("model_change_color", 1);
         cube.origin = dropper_origin.origin;
         cube.angles = (0, 0, 0);
         cube.targetname = "portal_cube";
-        cube NotSolid();
+        //cube NotSolid();
         cube PhysicsLaunch(cube.origin, (0, 0, 0));
         level.SwitchCube1 = cube;
+        model thread scene::play("fxanim_portal_switch_up", model);
+        wait(1);
+        dropper thread scene::play("fxanim_item_dropper_close", dropper);
+        wait(1);
+    }
+}
+
+function SwitchFaith02()
+{
+    model = GetEnt(self.target, "targetname");
+    dropper = GetEnt(model.target, "targetname");
+    dropper_origin = GetEnt(dropper.target, "targetname");
+    self SetCursorHint("HINT_NOICON");
+	self SetHintString("");
+    model thread scene::play("fxanim_portal_switch_up", model);
+    while(true)
+    {
+        self waittill("trigger", player);
+        if (isDefined(level.SwitchCube2))
+            level.SwitchCube2 Delete();
+        model thread scene::play("fxanim_portal_switch_down", model);
+        dropper thread scene::play("fxanim_item_dropper_open", dropper);
+        wait(1);
+        cube = Spawn("script_model", dropper_origin.origin);
+        cube SetModel("m_0a7141f5_reflection_cube");
+        cube.origin = dropper_origin.origin;
+        cube.angles = (0, 0, 0);
+        cube.targetname = "portal_cube";
+        //cube NotSolid();
+        cube PhysicsLaunch(cube.origin, (0, 0, 0));
+        level.SwitchCube2 = cube;
         model thread scene::play("fxanim_portal_switch_up", model);
         wait(1);
         dropper thread scene::play("fxanim_item_dropper_close", dropper);
@@ -1657,7 +1728,7 @@ function FaithPlate()
     model = GetEnt(self.target, "targetname");
     target = GetEnt(model.target, "targetname");
     model thread scene::init("fxanim_faith_plate_launch_up", model);
-    //self thread FaithWatchCubes(model, target);
+    self thread FaithWatchCubes(model, target);
     while(1)
     {
         self waittill("trigger", player);
@@ -1668,9 +1739,11 @@ function FaithPlate()
             model thread scene::play("fxanim_faith_plate_128_launch", model);
         player SetOrigin(player.origin + (0,0,5));
         if (IsDefined(model.script_int))
-            player SetVelocity(LaunchToTarget(self.origin,target.origin,model.script_int));
+            player SetVelocity(LaunchToTarget(player.origin,target.origin,model.script_int));
+        else if (IsDefined(self.script_int))
+            player SetVelocity(LaunchToTarget(player.origin,( -64 , -928.25 , -424 ),2.4));
         else
-            player SetVelocity(LaunchToTarget(self.origin,target.origin,2.4));
+            player SetVelocity(LaunchToTarget(player.origin,target.origin,2.4));
         wait(3.33);
     }
 }
@@ -1682,25 +1755,30 @@ function FaithWatchCubes(model,target)
         cubes = GetEntArray("portal_cube", "targetname");
         foreach (cube in cubes)
         {
-            if (cube IsTouching(self))
+            if (cube IsTouching(self) && !(cube.isBeingHeld))
             {
                 if (model.model == "faith_plate")
-                    model thread scene::play("fxanim_faith_plate_launch_up", model);
+                    if (self.script_int == 1)
+                        model thread scene::play("fxanim_faith_plate_launch_up", model);
+                    else
+                        model thread scene::play("fxanim_faith_plate_launch_angle", model);
                 else
                     model thread scene::play("fxanim_faith_plate_128_launch", model);
                 old_origin = cube.origin;
                 old_angles = cube.angles;
                 old_model = cube.model;
-                cube Delete();
                 new_cube = Spawn("script_model", old_origin);
                 new_cube SetModel(old_model);
                 new_cube.origin = old_origin;
                 new_cube.angles = old_angles;
                 new_cube.targetname = "portal_cube";
-                new_cube NotSolid();
-                new_cube PhysicsLaunch(new_cube.origin, LaunchToTarget(new_cube.origin, target.origin, 2)*0.12);
-                level.SwitchCube1 = new_cube;
-                new_cube thread MonitorFaithCube(new_cube);
+                new_cube clientfield::set("model_change_color", 1);
+                new_cube PhysicsLaunch(new_cube.origin, LaunchToTarget(new_cube.origin, target.origin, 2)*0.1);
+                if (isDefined(level.SwitchCube1) && level.SwitchCube1 == cube)
+                    level.SwitchCube1 = new_cube;
+                if (isDefined(level.SwitchCube2) && level.SwitchCube2 == cube)
+                    level.SwitchCube2 = new_cube;
+                cube Delete();
                 wait(.2);
             }
         }
@@ -1708,52 +1786,15 @@ function FaithWatchCubes(model,target)
     }
 }
 
-function MonitorFaithCube(cube)
-{
-    while(isDefined(cube))
-    {
-        prev_origin = cube.origin;
-        wait(1);
-        if (!isDefined(cube))
-            break;
-        if (cube.origin == prev_origin)
-        {
-            new_cube = Spawn("script_model", cube.origin);
-            if (isDefined(cube.model))
-                new_cube SetModel(cube.model);
-            if (isDefined(cube.angles))
-                new_cube.angles = cube.angles;
-            if (isDefined(cube.targetname))
-                new_cube.targetname = cube.targetname;
-            if (isDefined(cube.script_int))
-                new_cube.script_int = cube.script_int;
-            if (isDefined(cube.isBeingHeld))
-                new_cube.isBeingHeld = cube.isBeingHeld;
-            if (isDefined(cube.portalClone))
-                new_cube.portalClone = cube.portalClone;
-            if (isDefined(cube.portalClone2))
-                new_cube.portalClone2 = cube.portalClone2;
-            new_cube NotSolid();
-            new_cube PhysicsLaunch(new_cube.origin, (0,0,0));
-            new_cube clientfield::set("model_change_color", 1 );
-            level.SwitchCube1 = new_cube;
-            cube.origin = (0,0,0);
-            cube Delete();
-            break;
-        }
-        WAIT_SERVER_FRAME;
-    }
-}
-
 function LaunchToTarget(plate_origin, target_pos, flight_time)
 {
-    g = 800; // Gravity (adjust for your engine)
+    gravity = 800; // Gravity (adjust for your engine)
     start_pos = plate_origin + (0, 0, 10); // Slight lift above plate
     delta = target_pos - start_pos;
 
     vx = delta[0] / flight_time;
     vy = delta[1] / flight_time;
-    vz = (delta[2] / flight_time) + 0.5 * g * flight_time;
+    vz = (delta[2] / flight_time) + 0.5 * gravity * flight_time;
 
     velocity = (vx, vy, vz);
 
@@ -3131,6 +3172,7 @@ function PortalGunGravitySystem()
                     self.holdingCube = cube;
                     //cube NotSolid();
                     cube.isBeingHeld = true; // Mark as held
+                    cube NotSolid();
                     // Save offset and angles for relative holding
                     start_cube_angles = cube.angles;
 					start_player_angles = self GetPlayerAngles();
@@ -3153,6 +3195,7 @@ function PortalGunGravitySystem()
             else
             {
                 cube = self.holdingCube;
+                cube Solid();
                 if (isLowReady)
                 {
                     // Drop gently by default
@@ -3202,6 +3245,15 @@ function GravityHoldLoop(angle_offset, holdingDistance)
         holdPos = (holdPos[0], holdPos[1], math::clamp(holdPos[2], min_height, max_height));
 
         cube.origin = holdPos;
+
+        if (IsDefined(player) && IsDefined(player GetVelocity()))
+        {
+            velocity = player GetVelocity();
+            if (GetBiggestAbsComponent(velocity) > 300)
+                cube NotSolid();
+            else
+                cube Solid();
+        }
 
     // Make cube face the player (forward vector points at player's eye)
     direction_to_player = player GetTagOrigin("tag_eye") - cube.origin;
@@ -3523,7 +3575,7 @@ function PlacePortal(player, portal_type, trace)
     if ((!IsDefined(level.portalThreadsStarted) || !level.portalThreadsStarted) && IsDefined(level.portal_1_mesh) && IsDefined(level.portal_2_mesh))
     {
         thread Portal_CheckEachFrame();
-        thread CheckCubesInPortals();
+        //thread CheckCubesInPortals();
         level.portalThreadsStarted = true;
     }
 }
