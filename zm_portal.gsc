@@ -1,3 +1,4 @@
+#using scripts\zm\_zm_bgb; 
 #using scripts\zm\_zm_equipment; 
 #using scripts\zm\_zm_hero_weapon; 
 #using scripts\shared\lui_shared; 
@@ -69,6 +70,29 @@
 #using scripts\Sphynx\commands\_zm_name_checker;
 
 #using scripts\zm\_zm_t8_hud;
+
+//-----Perk FX/Lights-----
+#precache( "fx", "zombie/fx_perk_juggernaut_factory_zmb" );
+#precache( "fx", "zombie/fx_perk_quick_revive_factory_zmb" );
+#precache( "fx", "zombie/fx_perk_sleight_of_hand_factory_zmb" );
+#precache( "fx", "zombie/fx_perk_doubletap2_factory_zmb" );
+#precache( "fx", "zombie/fx_perk_daiquiri_factory_zmb" );
+#precache( "fx", "zombie/fx_perk_stamin_up_factory_zmb" );
+#precache( "fx", "zombie/fx_perk_mule_kick_factory_zmb" );
+
+#define JUGGERNAUT_MACHINE_LIGHT_FX                         "jugger_light"
+#define QUICK_REVIVE_MACHINE_LIGHT_FX                       "revive_light"
+#define STAMINUP_MACHINE_LIGHT_FX                           "marathon_light"
+#define WIDOWS_WINE_FX_MACHINE_LIGHT                        "widow_light"
+#define SLEIGHT_OF_HAND_MACHINE_LIGHT_FX                    "sleight_light"
+#define DOUBLETAP2_MACHINE_LIGHT_FX                         "doubletap2_light"
+#define DEADSHOT_MACHINE_LIGHT_FX                           "deadshot_light"
+#define ADDITIONAL_PRIMARY_WEAPON_MACHINE_LIGHT_FX          "additionalprimaryweapon_light"
+#define ELECTRIC_CHERRY_MACHINE_LIGHT_FX                    "electric_cherry_light"
+#define PHD_PERK_MACHINE_LIGHT_FX			                      "phd_light"
+#define TOMBSTONE_PERK_MACHINE_LIGHT_FX			                "tombstone_light"
+#define VULTURE_PERK_MACHINE_LIGHT_FX		                    "vulture_light"
+#define CHUGABUD_MACHINE_LIGHT_FX			                      "chugabud_light"
 
 #precache( "triggerstring", "ZOMBIE_NEED_POWER" );
 #precache( "triggerstring", "ZOMBIE_ELECTRIC_SWITCH");
@@ -279,6 +303,10 @@ function main()
 	inspectable::add_inspectable_weapon( GetWeapon("t9_zrg20mm_up"), 6.67 );
 
     zm_usermap::main();
+
+    level.perk_purchase_limit = 20;
+
+    zombie_utility::set_zombie_var( "below_world_check", -8000 );	
     
     level.enemy_location_override_func = &enemy_location_override;
 	level.no_target_override = &no_target_override;
@@ -298,13 +326,15 @@ function main()
     startingWeapon = "";
     weapon = GetWeapon(startingWeapon);
     level.start_weapon = (weapon);
+
+    level thread perk_init();
 	
 	level._zombie_custom_add_weapons =&custom_add_weapons;
 	
 	//Setup the levels Zombie Zone Volumes
 	level.zones = [];
 	level.zone_manager_init_func =&usermap_test_zone_init;
-	init_zones[0] = "start_zone";
+    init_zones[0] = "start_zone";
 	level thread zm_zonemgr::manage_zones( init_zones );
 
 	level.pathdist_type = PATHDIST_ORIGINAL;
@@ -316,6 +346,8 @@ function main()
 	callback::on_connect( &PortalGunGravitySystem);
 
     level.loop_ele = 0;
+    level.AnnouncerSound = 0;
+    level util::set_lighting_state(0);
 
 	//thread ButtonInit();
 	//thread DoorInit();
@@ -351,6 +383,7 @@ function setupMusic()
     zm_audio::musicState_Create("main_01", PLAYTYPE_SPECIAL, "main_01");
     zm_audio::musicState_Create("main_02", PLAYTYPE_SPECIAL, "main_02");
     zm_audio::musicState_Create("hub", PLAYTYPE_SPECIAL, "hub");
+    zm_audio::musicState_Create("ratman", PLAYTYPE_SPECIAL, "ratman");
 }
 
 
@@ -358,26 +391,33 @@ function usermap_test_zone_init()
 {
 	zm_zonemgr::add_adjacent_zone( "start_zone", "start2_zone", "start_start2");
     zm_zonemgr::add_adjacent_zone( "start2_zone", "start3_zone", "start2_start3");
-    zm_zonemgr::add_adjacent_zone( "start3_zone", "hub_elevator_zone", "start3_hub_elevator");
-    zm_zonemgr::add_adjacent_zone( "hub_elevator_zone", "hub_zone", "hub_elevator_hub");
-    zm_zonemgr::add_adjacent_zone( "hub_zone", "top_hub_zone", "top_hub");
+    zm_zonemgr::zone_init("hub_zone");
+    zm_zonemgr::zone_init("top_hub_zone");
+    zm_zonemgr::zone_init("40s_zone");
+    zm_zonemgr::zone_init("boss_zone");
+    zm_zonemgr::zone_init("pump_bottom_zone");
+    zm_zonemgr::zone_init("lch1_zone");
+    zm_zonemgr::zone_init("lch3_zone");
+    zm_zonemgr::zone_init("mid_hub_zone");
+    zm_zonemgr::enable_zone("hub_zone");
+    zm_zonemgr::enable_zone("top_hub_zone");
+    zm_zonemgr::enable_zone("40s_zone");
+    zm_zonemgr::enable_zone("boss_zone");
+    zm_zonemgr::enable_zone("pump_bottom_zone");
+    zm_zonemgr::enable_zone("lch1_zone");
+    zm_zonemgr::enable_zone("lch3_zone");
+    zm_zonemgr::enable_zone("mid_hub_zone");
     zm_zonemgr::add_adjacent_zone( "hub_zone", "hub2_zone", "hub_hub2");
     zm_zonemgr::add_adjacent_zone( "hub_zone", "office_zone", "hub_office");
     zm_zonemgr::add_adjacent_zone( "hub2_zone", "pump_zone", "hub2_pump");
     zm_zonemgr::add_adjacent_zone( "pump_zone", "power_zone", "pump_power");
-    zm_zonemgr::add_adjacent_zone( "pump_zone", "fall_zone", "pump_fall");
-    zm_zonemgr::add_adjacent_zone( "fall_zone", "pump_bottom_zone", "fall_pump_bottom");
     zm_zonemgr::add_adjacent_zone( "pump_bottom_zone", "pump_elevator_zone", "pump_bottom_pump_elevator");
-    zm_zonemgr::add_adjacent_zone( "pump_elevator_zone", "fall_zone", "pump_elevator_fall");
-    zm_zonemgr::add_adjacent_zone( "fall_zone", "40s_zone", "fall_40s");
     zm_zonemgr::add_adjacent_zone( "40s_zone", "pap_zone", "40s_pap");
-    zm_zonemgr::add_adjacent_zone( "fall_zone", "boss_zone", "fall_boss");
     zm_zonemgr::add_adjacent_zone( "pump_bottom_zone", "pg1_zone", "pump_bottom_pg1");
     zm_zonemgr::add_adjacent_zone( "pg1_zone", "pg2_zone", "pg1_pg2");
     zm_zonemgr::add_adjacent_zone( "pg2_zone", "pg3_zone", "pg2_pg3");
-    zm_zonemgr::add_adjacent_zone( "fall_zone", "lch1_zone", "fall_lch1" );
     zm_zonemgr::add_adjacent_zone( "lch1_zone", "lch2_zone", "lch1_lch2" );
-    zm_zonemgr::add_adjacent_zone( "lch2_zone", "lch3_zone", "lch2_lch3" );
+    //zm_zonemgr::add_adjacent_zone( "lch2_zone", "lch3_zone", "lch2_lch3" );
     zm_zonemgr::add_adjacent_zone( "lch3_zone", "lch4_zone", "lch3_lch4" );
 
     level flag::init( "always_on" );
@@ -387,6 +427,24 @@ function usermap_test_zone_init()
 function custom_add_weapons()
 {
 	zm_weapons::load_weapon_spec_from_table("gamedata/weapons/zm/zm_levelcommon_weapons.csv", 1);
+}
+
+//-----Perk FX/Lights-----
+function perk_init()
+{
+    level._effect[JUGGERNAUT_MACHINE_LIGHT_FX]                  = "zombie/fx_perk_juggernaut_factory_zmb";
+    level._effect[QUICK_REVIVE_MACHINE_LIGHT_FX]                = "zombie/fx_perk_quick_revive_factory_zmb";
+    level._effect[SLEIGHT_OF_HAND_MACHINE_LIGHT_FX]             = "zombie/fx_perk_sleight_of_hand_factory_zmb";
+    level._effect[DOUBLETAP2_MACHINE_LIGHT_FX]                  = "zombie/fx_perk_doubletap2_factory_zmb";
+    level._effect[DEADSHOT_MACHINE_LIGHT_FX]                    = "zombie/fx_perk_daiquiri_factory_zmb";
+    level._effect[STAMINUP_MACHINE_LIGHT_FX]                    = "zombie/fx_perk_stamin_up_factory_zmb";
+    level._effect[ADDITIONAL_PRIMARY_WEAPON_MACHINE_LIGHT_FX]   = "zombie/fx_perk_mule_kick_factory_zmb";
+    level._effect[ELECTRIC_CHERRY_MACHINE_LIGHT_FX]             = "zombie/fx_perk_quick_revive_factory_zmb";
+    level._effect[WIDOWS_WINE_FX_MACHINE_LIGHT]                 = "zombie/fx_perk_juggernaut_factory_zmb";
+	level._effect[PHD_PERK_MACHINE_LIGHT_FX]                    = "zombie/fx_perk_stamin_up_factory_zmb";
+	level._effect[TOMBSTONE_PERK_MACHINE_LIGHT_FX]              = "zombie/fx_perk_mule_kick_factory_zmb";
+	level._effect[VULTURE_PERK_MACHINE_LIGHT_FX]                = "zombie/fx_perk_juggernaut_factory_zmb";
+	level._effect[CHUGABUD_MACHINE_LIGHT_FX	]                   = "zombie/fx_perk_mule_kick_factory_zmb";
 }
 
 function CameraInit()
@@ -512,7 +570,7 @@ function Chamber00()
         player util::show_hud(false);
     }
     VideoStop("loadingscreen");
-    thread PlayAnnouncerSound("announcer_00",30.72);
+    thread AnnouncerQueue();
     wait(31);
     level thread zm_audio::sndMusicSystem_PlayState("tech_diff");
     
@@ -524,14 +582,28 @@ function Chamber00()
 	close_trigger_1 waittill("trigger", player);
 	door_1 thread DoorOpen(false);
     
-    thread PlayAnnouncerSound("announcer_01",11.938);
+    level.AnnouncerSound++;
     model thread Dropper();
     VideoStart("laser_portal", true);
     
     //CHAMBER 0 EXIT
     vox_1 waittill("trigger", player);
-    thread PlayAnnouncerSound("announcer_02",7.835);
+    level.AnnouncerSound++;
     thread Chamber01();
+}
+
+function AnnouncerQueue()
+{
+    time = Array(30.72,11.938,7.835,14.05,17.293);
+    while(level.AnnouncerSound <= 5)
+    {
+        temp = level.AnnouncerSound;
+        PlayAnnouncerSound("announcer_0" + level.AnnouncerSound,time[level.AnnouncerSound]);
+        while (temp == level.AnnouncerSound)
+            WAIT_SERVER_FRAME;
+    }
+    Chamber2Vox();
+    level.AnnouncerSound++;
 }
 
 function Chamber01()
@@ -560,7 +632,7 @@ function Chamber01()
 
     entrance DoorOpen(false);
     vox_2 waittill("trigger", player);
-    thread PlayAnnouncerSound("announcer_03",14.05);
+    level.AnnouncerSound++;
     entrance_trig waittill("trigger", player);
     entrance DoorOpen(true);
     close_trig waittill("trigger", player);
@@ -572,7 +644,7 @@ function Chamber01()
     switch_02_trig thread SwitchChamber01();
     switch_03_trig thread SwitchChamber01();
     vox_3 waittill("trigger", player);
-    thread PlayAnnouncerSound("announcer_04",17.293);
+    level.AnnouncerSound++;
     thread Chamber02();
 }
 
@@ -593,7 +665,7 @@ function Chamber02()
     VideoStart("animal_king",true);
 
     vox_4 waittill("trigger", player);
-    thread Chamber2Vox();
+    level.AnnouncerSound++;
     trigger waittill("trigger", player);
     door thread DoorOpen(true);
     trigger_close waittill("trigger", player);
@@ -602,6 +674,8 @@ function Chamber02()
     
 
     trigger2 waittill("trigger", player);
+    while (level.AnnouncerSound != 6)
+        wait(0.05);
     door2 thread DoorOpen(true);
 
     thread BrodesCore();
@@ -623,7 +697,9 @@ function Chamber02()
     }
     PlaySoundAtPosition("floor_collapse", player.origin);
     PlaySoundAtPosition("brodes_dialog_03", (0,0,0));
-
+    level thread zm_audio::sndMusicSystem_StopAndFlush();
+    music::setmusicstate("none");
+    level thread zm_audio::sndMusicSystem_PlayState("ratman");
     trigger_pickup = GetEnt("trigger_pickup", "targetname");
     pistol = GetEnt(trigger_pickup.target, "targetname");
     trigger_pickup_clip = GetEnt("trigger_pickup_clip", "targetname");
@@ -652,6 +728,8 @@ function Chamber02()
     trigger_close3 = GetEnt("portal_door_06_trigger_close", "targetname");
     trigger3 waittill("trigger", player);
     door3 thread DoorOpen(true);
+    level thread zm_audio::sndMusicSystem_StopAndFlush();
+    music::setmusicstate("none");
     PlaySoundAtPosition("brodes_dialog_07", (0,0,0));
     trigger_close3 waittill("trigger", player);
     door3 thread DoorOpen(false);
@@ -735,12 +813,9 @@ function Hub()
     underground_doors = GetEntArray("underground_door", "targetname");
     double_doors = GetEntArray("double_door", "targetname");
     enter_trigger waittill("trigger", player);
-    level flag::set("hub_elevator_hub");
-    level flag::set("top_hub");
-    level flag::set("hub_hub2");
     SetDvar("ai_disableSpawn", 0);
-    player util::show_hud(true);
-    player GiveWeapon(GetWeapon("t9_1911"));
+    level thread zm_audio::sndMusicSystem_StopAndFlush();
+    music::setmusicstate("none");
     level thread zm_audio::sndMusicSystem_PlayState("hub");
     foreach (underground_door in underground_doors)
     {
@@ -778,8 +853,6 @@ function Hub()
     PlaySoundAtPosition("amb_water_drain",(317,666,-5634));
 
     timer = 0;
-    level flag::set("pump_fall");
-    level flag::set("fall_pump_bottom");
     while (timer < 10)
     {
         foreach (player in GetPlayers())
@@ -865,7 +938,8 @@ function WaterSwitch()
     self SetCursorHint("HINT_NOICON");
     self SetHintString("");
     level flag::wait_till("power_on");
-    level flag::set("fall_40s");
+    level util::set_lighting_state(1);
+    PlaySoundAtPosition("brodes_dialog_10", (0,0,0));
     self waittill("trigger", player);
     level.water_switch_count++;
     model EnableLinkTo();
@@ -1511,8 +1585,12 @@ function FaithPlateChamber()
 function DeathTrig()
 {
     trigger = GetEnt("death_trigger", "targetname");
-    trigger waittill("trigger", player);
-    player DoDamage(player.health + 1000, player.origin);
+    while(1)
+    {
+        trigger waittill("trigger", player);
+        player DoDamage(player.health + 1000, player.origin);
+        WAIT_SERVER_FRAME;
+    }
 }
 
 function PGChamber01()
@@ -1540,6 +1618,7 @@ function PGChamber01()
     player thread EquipPortalGun();
     wait(1);
     thread PlacePortalManually(orange_origin,2,true);
+    PlaySoundAtPosition("brodes_dialog_12", (0,0,0));
     close_trigger waittill("trigger", player);
     //door thread DoorOpen(false);
     thread PGChamber02();
@@ -1609,9 +1688,11 @@ function PGChamber03()
     player TakeWeapon(GetWeapon("portal_gun_blue"));
     level.CurrentPortalGun = "portal_gun";
     self thread zm_equipment::show_hint_text( "Press ^3[{+actionslot 1}]^7 to wield the Handheld Portal Device.");
+    PlaySoundAtPosition("brodes_dialog_13", (0,0,0));
 
     door_trigger SetCursorHint("HINT_NOICON");
     door_trigger SetHintString("Hold ^3[{+activate}]^7 to open Door [Cost: 2000]");
+    door_trigger Show();
     while (1)
     {
         door_trigger waittill("trigger", player);
@@ -1741,7 +1822,7 @@ function FaithPlate()
         if (IsDefined(model.script_int))
             player SetVelocity(LaunchToTarget(player.origin,target.origin,model.script_int));
         else if (IsDefined(self.script_int))
-            player SetVelocity(LaunchToTarget(player.origin,( -64 , -928.25 , -424 ),2.4));
+            player SetVelocity(LaunchToTarget(player.origin,(-7708.75 , 312.5 , 1553 ),1.2));
         else
             player SetVelocity(LaunchToTarget(player.origin,target.origin,2.4));
         wait(3.33);
@@ -1849,13 +1930,15 @@ function DoorOpen(state)
         else
             self thread scene::play("fxanim_portal_door_open", self);
         self NotSolid();
+        clip NotSolid();
         clip Hide();
     }
     else
     {
         //clip.origin = self.origin
-        self Show();
         self Solid();
+        clip Show();
+        clip Solid();
         if (self.model == "sliding_door_double_noglass")
             self thread scene::play("fxanim_sliding_door_double_close", self);
         else
@@ -1980,8 +2063,11 @@ function ElevatorInit()
     }
     loop_elevator = GetEnt("portal_elevator_loop", "targetname");
     loop_elevator thread LoopElevator();
-    pg_elevator = GetEnt("pg_elevator", "targetname");
-    pg_elevator thread PGElevator();
+    pg_elevators = GetEntArray("pg_elevator", "targetname");
+    foreach(trigger in pg_elevators)
+    {
+        trigger thread PGElevator();
+    }
     underground_elevators = GetEntArray("underground_elevator","targetname");
     foreach( trigger in underground_elevators )
     {
@@ -2120,8 +2206,7 @@ function LoopElevator()
     origin PlayLoopSound("elevator_depart");
     origin RotateYaw(180,5);
     platform RotateYaw(180,5);
-    level flag::set("start3_hub_elevator");
-    level flag::set("hub_elevator_hub");
+    level flag::set("hub_zone");
     //zm_zonemgr::disable_zone("start_zone");
     //zm_zonemgr::disable_zone("start2_zone");
     //zm_zonemgr::disable_zone("start3_zone");
@@ -2143,6 +2228,7 @@ function LoopElevator()
     gate_clip Show();
     left_origin RotateYaw(90, 1);
     right_origin RotateYaw(-90, 1);
+    level.MusicCount = 0;
 
     while(1)
     {
@@ -2166,12 +2252,18 @@ function LoopElevator()
             }
             wait(3);
             elevator thread scene::play("fxanim_elevator_b_open", elevator);
-            level thread zm_audio::sndMusicSystem_PlayState("main_01");
+            level thread zm_audio::sndMusicSystem_StopAndFlush();
+            music::setmusicstate("none");
+            if (level.MusicCount == 0)
+                level thread zm_audio::sndMusicSystem_PlayState("main_01");
+            else if (level.MusicCount == 1)
+                level thread zm_audio::sndMusicSystem_PlayState("main_02");
             door_clip Hide();
             gate_trigger waittill("trigger", player);
             gate_clip Show();
             left_origin RotateYaw(90, 1);
             right_origin RotateYaw(-90, 1);
+            level.MusicCount++;
         }
     }
 }
@@ -2224,7 +2316,6 @@ function UndergroundElevator()
             if (elevator.script_int == 1)
             {
                 boss_spawn = GetEnt("boss_spawn", "targetname");
-                level flag::set("fall_boss");
                 player SetOrigin(boss_spawn.origin);
                 player SetPlayerAngles(boss_spawn.angles);
                 thread Boss();
@@ -2236,7 +2327,6 @@ function UndergroundElevator()
             if (elevator.script_int == 2)
             {
                 boss_spawn = GetEnt("lch_origin", "targetname");
-                level flag::set("fall_lch1");
                 player SetOrigin(boss_spawn.origin);
                 player SetPlayerAngles(boss_spawn.angles);
                 thread LaserChamber01();
@@ -2596,6 +2686,8 @@ function BossAnims(boss)
 {
 	wait(2);
     //thread ee_ending();
+    level thread zm_audio::sndMusicSystem_StopAndFlush();
+    music::setmusicstate("none");
     level thread zm_audio::sndMusicSystem_PlayState("portal_boss");
 	self thread scene::play("fxanim_brodes_arms_intro", self);
 	wait(5.7);
@@ -2701,10 +2793,22 @@ function BossAnims(boss)
             WAIT_SERVER_FRAME;
         }
         boss thread scene::play("fxanim_brodes_boss_hit_from_above_stunned", boss);
-        level thread zm_audio::sndMusicSystem_StopAndFlush();
-        music::setmusicstate("none");
+        wait(1);
     }
-    //TODO: END GAME SCRIPTS GO HERE
+    level thread lui::screen_flash(1, 1.5, 0.5, 1, "white");
+	playsoundatposition("zmb_zod_endigc_whitescreen", (0, 0, 0));
+    SetDvar("ai_disableSpawn", 1);
+    foreach (zombie in getaispeciesarray(level.zombie_team, "all"))
+    {
+        if (isDefined(zombie) && zombie zombie_utility::is_zombie())
+        {
+            zombie Kill();
+        }
+    }
+    level thread zm_audio::sndMusicSystem_StopAndFlush();
+    music::setmusicstate("none");
+    wait(5);
+    setmatchflag( "game_ended", 1 );
 }
 
 function WatchCoreHealth(boss)
@@ -2786,13 +2890,20 @@ function WatchCoreHealth(boss)
     {
         if (self IsTouching(incinerator_trigger) && level.CoreFall)
         {
-            origin StopLoopSound(1);
-            wait(.1);
-            origin Delete();
-            level.BossWave--;
-            level.CoreFall = false;
-            self Delete();
-            //IPrintLnBold("ININCERATE");
+            if (level.Insinerate == true)
+            {
+                origin StopLoopSound(1);
+                wait(.1);
+                origin Delete();
+                level.BossWave--;
+                level.CoreFall = false;
+                self Delete();
+                //IPrintLnBold("ININCERATE");
+            }
+            else
+            {
+                origin.origin = (-8616.5 , 6669.25 , 1316);
+            }
         }
         WAIT_SERVER_FRAME;
     }
@@ -2897,14 +3008,17 @@ function SwitchBoss()
     self SetCursorHint("HINT_NOICON");
 	self SetHintString("");
     model thread scene::play("fxanim_portal_switch_up", model);
+    level.Insinerate = false;
     while(true)
     {
         self waittill("trigger", player);
         model thread scene::play("fxanim_portal_switch_down", model);
         incinerator thread scene::play("fxanim_incinerator_open", incinerator);
         clip Hide();
+        level.Insinerate = true;
         wait(7);
         clip show();
+        level.Insinerate = false;
         model thread scene::play("fxanim_portal_switch_up", model);
         incinerator thread scene::play("fxanim_incinerator_close", incinerator);
     }
@@ -3322,7 +3436,31 @@ function GetLookedAtCube(player, maxDist)
         {
             //IPrintLnBold("Valid cube for gravity gun detected: " + ent.targetname);
             temp = GetEnt(ent.target,"targetname");
+            //if (isDefined(temp) && isDefined(temp.model) && temp.model == "tag_origin_core")
+            //{
+            //    ent Unlink();
+            //    new_origin = Spawn("tag_origin_core", ent.origin);
+            //    new_origin.angles = ent.angles;
+            //    new_origin.targetname = temp.targetname;
+            //    ent LinkTo(new_origin);
+            //    temp.origin = (0,0,0);
+            //    temp Delete();
+            //    IPrintLnBold("temp1");
+            //    return new_origin;
+            //}
             temp2 = GetEnt(temp.target,"targetname");
+            //if (isDefined(temp2) && isDefined(temp2.model) && temp2.model == "tag_origin_core")
+            //{
+            //    ent Unlink();
+            //    new_origin = Spawn("tag_origin_core", ent.origin);
+            //    new_origin.angles = ent.angles;
+            //    new_origin.targetname = temp2.targetname;
+            //    ent LinkTo(new_origin);
+            //    temp2.origin = (0,0,0);
+            //    temp2 Delete();
+            //    IPrintLnBold("temp2");
+            //    return new_origin;
+            //}
             return temp2;
         }
         else
@@ -3470,7 +3608,7 @@ function PlacePortal(player, portal_type, trace)
        //IPrintLnBold("Entity: " + (isDefined(trace["entity"]) ? trace["entity"].targetname : "undefined"));
         return;
     }
-
+    
     //Play Sound
     if (portal_type == 1)
         PlaySoundAtPosition("portal_fizzle_01",level.portal_1.origin);
