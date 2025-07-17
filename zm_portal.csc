@@ -34,17 +34,19 @@
 //Traps
 #using scripts\zm\_zm_trap_electric;
 
-#using scripts\zm\_zm_t8_hud;
-
 #using scripts\zm\zm_usermap;
-
-#using scripts\Sphynx\commands\_zm_commands;
 
 function main()
 {
-	clientfield::register( "scriptmover", "model_change_color", VERSION_SHIP, GetMinBitCountForNum(2), "int", &model_change_color, !CF_HOST_ONLY, !CF_CALLBACK_ZERO_ON_NEW_ENT );
-	
+	clientfield::register("toplayer", "portal_muzzle_fx", 21000, 1, "counter", &toggle_flash_portal_gun, 0,0);
+	clientfield::register("toplayer", "portal_color_fx", 21000, 1, "counter", &toggle_color_portal_gun, 0,0);
+
 	zm_usermap::main();
+
+	level._effect["portal_gun_flash"] = "_donut/portal/portal_gun_flash";
+	level._effect["portal_gun_blue_orb"] = "_donut/portal/blue_orb";
+
+	//setDvar( "cg_focalDistance", 0.10 );
 
 	callback::on_localclient_connect( &on_player_connect ); //Wait for the player to connect 
 	util::waitforclient( 0 );
@@ -116,13 +118,29 @@ function RotateVectorByInverseAngles(vec, angles)
     return RotateVectorByAngles(vec, -angles);
 }
 
+
 function getFOV(x)
 {
 	 return 66.9 + (-1.02 * x) + (0.00464 * x * x);
 }
 
-function model_change_color(localClientNum, n_old_val, n_new_val, b_new_ent, b_initial_snap, str_field_name, b_was_time_jump)
+function testfunction()
 {
-    self MapShaderConstant(localClientNum, 0, "scriptVector2", 0, 1, n_new_val, 0);
+	//IPrintLnBold("CALLBACK");
 }
 
+function toggle_flash_portal_gun(localClientNum, n_old_val, n_new_val, b_new_ent, b_initial_snap, str_field_name, b_was_time_jump)
+{
+	if(n_new_val == 1)
+	{
+		PlayViewmodelFX(localClientNum,level._effect["portal_gun_flash"],"tag_flash");
+	}
+}
+
+function toggle_color_portal_gun(localClientNum, n_old_val, n_new_val, b_new_ent, b_initial_snap, str_field_name, b_was_time_jump)
+{
+	if(n_new_val == 1)
+	{
+		PlayViewmodelFX(localClientNum,level._effect["portal_gun_blue_orb"],"tag_orb_fx");
+	}
+}
